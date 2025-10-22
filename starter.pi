@@ -1,3 +1,5 @@
+import "Std/List"
+
 (* create shortcuts for readability *)
 val cons = list.cons       (* create new list *)
 val car  = list.car        (* return first val *)
