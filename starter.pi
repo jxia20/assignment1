@@ -1,10 +1,12 @@
 (* create shortcuts for readability *)
-val cons = list.cons (* create new list *)
-val car = list.car (* return first val *)
-val cdr = list.cdr (* return list except first val *)
-val null = list.null (* empty list *)
-val (+$) = string.+$ (* combines two strings *)      
-val ($$) = int.toString (* int to string *) 
-
-print!("hello, " +$ "world")!()
-print!("[n=" +$ ($$ 42) +$ "]")!()
+let
+  val cons = list.cons       (* create new list *)
+  val car  = list.car        (* return first val *)
+  val cdr  = list.cdr        (* return list except first val *)
+  val null = list.null       (* empty list *)
+  val (+$) = string.+$       (* combines two strings *)
+  val ($$) = int.toString    (* int to string *)
+in
+  print!("hello, " +$ "world")!();
+  print!("[n=" +$ ($$ 42) +$ "]")!()
+end
