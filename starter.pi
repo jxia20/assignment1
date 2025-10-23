@@ -20,9 +20,14 @@ def printList xs:(List Int) =
     | print!" "
     | printList!(cdr xs) )
 
-val xs = (cons 1 (cons 2 (cons 3 nil)))
-val ys = (cons 4 (cons 5 nil))
+{- reverse list helper function. reverses a list -}
+def revAcc [#X xs:(List X) acc:(List X) q:/(List X)] =
+  if (null xs) then
+    q!acc
+  else
+    revAcc![#X (cdr xs) (cons (car xs) acc) q]
 
-new r:^(List Int)
-run ( append![#Int xs ys (rchan r)]
-    | r?zs:(List Int) = printList!zs )
+{- reverse list helper -}
+def rev [#X xs:(List X) q:/(List X)] =
+  revAcc![#X xs nil q]
+
