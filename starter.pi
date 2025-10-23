@@ -1,12 +1,8 @@
 import "Std/List";
 
-(* create shortcuts for readability *)
-let
-  val cons = list.cons        (* create new list *)
-  val car  = list.car         (* return first val *)
-  val cdr  = list.cdr         (* return list except first val *)
-  val null = list.null        (* empty list *)
-in
-  print!("hello, world")!();
-  print!("[n=42]")!()
-end
+val cons = list.cons (* create new list *)
+val car  = list.car (* return first val *)
+val cdr  = list.cdr (* return list except first val *)
+val null = list.null (* empty list *)
+
+
