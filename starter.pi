@@ -1,3 +1,26 @@
 import "Std/List"
+import "Std/String"
+import "Std/Int"
 
-run print!"hello world"
+def append [#X xs:(List X) ys:(List X) q:/(List X)] =
+  if (null xs) then
+    q!ys
+  else
+    ( new k:^(List X)
+      ( append![#X (cdr xs) ys (rchan k)]
+      | k?zs:(List X) = q!(cons (car xs) zs) ))
+
+def printList [#X xs:(List X)] =
+  if (null xs) then
+    print!"\n"
+  else
+    ( printi!(car xs)
+    | print!" "
+    | printList!(#X cdr xs) )
+
+val xs = (cons 1 (cons 2 (cons 3 nil)))
+val ys = (cons 4 (cons 5 nil))
+
+new r:^(List Int)
+run ( append![#Int xs ys (rchan r)]
+    | r?zs:(List Int) = printList!zs )
