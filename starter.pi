@@ -2,6 +2,7 @@ import "Std/List"
 import "Std/String"
 import "Std/Int"
 
+{- append helper function. combines two lists -}
 def append [#X xs:(List X) ys:(List X) q:/(List X)] =
   if (null xs) then
     q!ys
@@ -10,13 +11,14 @@ def append [#X xs:(List X) ys:(List X) q:/(List X)] =
       ( append![#X (cdr xs) ys (rchan k)]
       | k?zs:(List X) = q!(cons (car xs) zs) ))
 
-def printList [#X xs:(List X)] =
+{- printer list helper function. prints all values of a list of type integer -}
+def printList xs:(List Int) =
   if (null xs) then
     print!"\n"
   else
     ( printi!(car xs)
     | print!" "
-    | printList!(#X cdr xs) )
+    | printList!(cdr xs) )
 
 val xs = (cons 1 (cons 2 (cons 3 nil)))
 val ys = (cons 4 (cons 5 nil))
