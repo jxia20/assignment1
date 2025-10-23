@@ -1,8 +1,8 @@
 import "Std/List";
 
-val cons = list.cons (* create new list *)
-val car  = list.car (* return first val *)
-val cdr  = list.cdr (* return list except first val *)
-val null = list.null (* empty list *)
+val cons = list.cons; (* create new list *)
+val car  = list.car; (* return first val *)
+val cdr  = list.cdr; (* return list except first val *)
+val null = list.null; (* empty list *)
 
 
