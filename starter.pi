@@ -1,8 +1,3 @@
 import "Std/List"
 
-val cons = list.cons
-val car  = list.car
-val cdr  = list.cdr
-val null = list.null
-
 run print!"hello world"
