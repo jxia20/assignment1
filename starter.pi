@@ -1,4 +1,4 @@
-import "Std/List";
+import "Std/List"
 
 val cons = list.cons; (* create new list *)
 val car  = list.car; (* return first val *)
