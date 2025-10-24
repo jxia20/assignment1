@@ -1,0 +1,15 @@
+include "mapreduce.pi"
+
+val searchString = "is"
+
+def map (lineNumber lineText) =
+  let words = split lineText in
+  findMatches words searchString lineNumber
+
+def compare (key1 key2) = (<= (length key1) (length key2))
+
+def reduce (word lineList) =
+  (cons [word lineList] nil)
+
+val result = mapReduce map compare reduce input
+print result
