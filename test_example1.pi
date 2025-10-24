@@ -1,0 +1,148 @@
+import "Std/List"
+import "Std/Int"
+import "Std/String"
+
+{- ---------- tuple accessors (needed on some builds) ---------- -}
+def fst (p) = (car p)
+def snd (p) = (car (cdr p))
+
+{- ---------- tiny list utilities ---------- -}
+
+def append (xs ys) =
+  if (null xs) then ys else (cons (car xs) (append (cdr xs) ys))
+
+{- split list into two halves (for mergesort) -}
+def split2 (xs) =
+  if (null xs) then [nil nil]
+  else if (null (cdr xs)) then [(cons (car xs) nil) nil]
+  else
+    ( let halves = split2 (cdr (cdr xs)) in
+      [(cons (car xs) (fst halves)) (cons (car (cdr xs)) (snd halves))] )
+
+{- merge two sorted lists of pairs [K V], using compare on keys -}
+def mergePairs (compare xs ys) =
+  if (null xs) then ys
+  else if (null ys) then xs
+  else
+    ( let x = (car xs) in
+      let y = (car ys) in
+      let kx = (fst x) in
+      let ky = (fst y) in
+      if (compare kx ky) then
+        (cons x (mergePairs compare (cdr xs) ys))
+      else
+        (cons y (mergePairs compare xs (cdr ys))) )
+
+def mergeSortPairs (compare xs) =
+  if (null xs) then nil
+  else if (null (cdr xs)) then xs
+  else
+    ( let halves = split2 xs in
+      let a = (fst halves) in
+      let b = (snd halves) in
+      mergePairs compare (mergeSortPairs compare a) (mergeSortPairs compare b) )
+
+def revAcc (xs acc) =
+  if (null xs) then acc 
+  else (revAcc (cdr xs) (cons (car xs) acc))
+
+def rev (xs) = (revAcc xs nil)
+
+{- consume leading [K V] pairs with the same key -}
+def takeSameKey (k0 xs acc) =
+  if (null xs) then [nil acc]
+  else
+    ( let p = (car xs) in
+      if (== (fst p) k0) then
+        (takeSameKey k0 (cdr xs) (cons (snd p) acc))
+      else
+        [xs acc] )
+
+{- group adjacent [K V] into [K (List V)]. xs must be sorted by key -}
+def groupByKeySorted (xs) =
+  if (null xs) then nil
+  else
+    ( let p0 = (car xs) in
+      let k0 = (fst p0) in
+      let v0 = (snd p0) in
+      let taken = takeSameKey k0 (cdr xs) (cons v0 nil) in
+      let rest = (fst taken) in
+      let vals = (snd taken) in
+      (cons [k0 (rev vals)] (groupByKeySorted rest)) )
+
+{- ---------- helpers to avoid lambdas/higher-order quirks ---------- -}
+
+{- map all: flat-map "map" over input list of [K1 V1] -}
+def mapAll (map input) =
+  if (null input) then nil
+  else
+    ( let p = (car input) in
+      append (map (fst p) (snd p)) (mapAll map (cdr input)) )
+
+{- reduce all: flat-map "reduce" over grouped list of [K2 (List V2)] -}
+def reduceAll (reduce groups) =
+  if (null groups) then nil
+  else
+    ( let g = (car groups) in
+      append (reduce (fst g) (snd g)) (reduceAll reduce (cdr groups)) )
+
+{- ---------- MapReduce engine (function-returning) ---------- -}
+{- map     : K1 -> V1 -> (List [K2 V2])
+   compare : K2 -> K2 -> Bool
+   reduce  : K2 -> (List V2) -> (List V3)
+   input   : (List [K1 V1])
+   returns : (List V3)
+-}
+def mapReduce (map compare reduce input) =
+  ( let mapped = (mapAll map input) in
+  let sorted = (mergeSortPairs compare mapped) in
+  let groups = (groupByKeySorted sorted) in
+  (reduceAll reduce groups) )
+
+{- ---------- Example 1 from the assignment ---------- -}
+
+def ex_map (k v) = (cons [k v] nil)
+def ex_cmp (k1 k2) = (<= k1 k2)
+def ex_red (k vs) = (cons [k vs] nil)
+
+val input1 =
+  (cons >
+    [2 a] [3 b] [1 c] [3 d] [1 a] [4 b] [2 c] [1 d] nil)
+
+val expected1 =
+  (cons >
+    [1 (cons > c a d nil)]
+    [2 (cons > a c nil)]
+    [3 (cons > b d nil)]
+    [4 (cons > b nil)]
+    nil)
+
+val out1 = (mapReduce ex_map ex_cmp ex_red input1)
+
+{- simple equality for [[K (List V)]] structures -}
+def eqList (xs ys) =
+  (if (null xs) then (null ys)
+   else if (null ys) then false
+   else
+     (and (== (car xs) (car ys))
+          (eqList (cdr xs) (cdr ys))) )
+
+def eqKVList (xs ys) =
+  if (null xs) then (null ys)
+  else if (null ys) then false
+  else
+    ( let px = (car xs) in
+      let py = (car ys) in
+      let kx = (fst px) in
+      let ky = (fst py) in
+      let vx = (snd px) in
+      let vy = (snd py) in
+      (and (== kx ky)
+           (and (eqList vx vy)
+                (eqKVList (cdr xs) (cdr ys)))) )
+
+def main =
+  if (eqKVList out1 expected1) then
+    print!"PASS Example 1\n"
+  else
+    print!"FAIL Example 1\n"
