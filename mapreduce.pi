@@ -43,13 +43,37 @@ def lengthAcc [#X xs:(List X) n:Int q:/Int] =
 def length [#X xs:(List X) q:/Int] =
   lengthAcc![#X xs 0 q]
   
+{- inc: x ↦ x + 1, returning via q -}
+def increment [x:Int q:/Int] =
+  ( new s:^Int
+    ( +![x 1 (rchan s)]
+    | s?r:Int = q!r ))
+
+{- mapList: apply f to each element of xs, collect results in order, send on q -}
+def mapList [#A #B xs:(List A) f:/[A /B] q:/(List B)] =
+  if (null xs) then
+    q!nil
+  else
+    ( new b:^B            {- result of f (car xs) -}
+      new tl:^(List B)    {- mapped tail -}
+      ( f![(car xs) (rchan b)]
+      | b?y:B =
+          ( mapList![#A #B (cdr xs) f (rchan tl)]
+          | tl?ys:(List B) = q!(cons y ys) ) ) )
+
 val xs = (cons 1 (cons 2 (cons 3 nil)))
 val ys = (cons 4 (cons 5 nil))
 
-new r:^(List Int)
-new n:^Int
+new a:^(List Int)
 run (
-    append![#Int xs ys (rchan r)]
-    | r?zs:(List Int) = ( printList!zs | length![#Int zs (rchan n)] )
-    | n?k:Int = printi!k
+  append![#Int xs ys (rchan a)]
+| a?zs:(List Int) =
+    ( 
+      ( print!"orig: " | printList!zs )
+    | ( new m:^(List Int)
+        ( mapList![#Int #Int zs increment (rchan m)]
+        | m?ms:(List Int) = ( print!"map(+1): " | printList!ms )
+        )
+      )
+    )
 )
