@@ -42,12 +42,6 @@ def lengthAcc [#X xs:(List X) n:Int q:/Int] =
 
 def length [#X xs:(List X) q:/Int] =
   lengthAcc![#X xs 0 q]
-  
-{- inc: x ↦ x + 1, returning via q -}
-def increment [x:Int q:/Int] =
-  ( new s:^Int
-    ( +![x 1 (rchan s)]
-    | s?r:Int = q!r ))
 
 {- mapList: apply f to each element of xs, collect results in order, send on q -}
 def mapList [#A #B xs:(List A) f:/[A /B] q:/(List B)] =
@@ -61,6 +55,30 @@ def mapList [#A #B xs:(List A) f:/[A /B] q:/(List B)] =
           ( mapList![#A #B (cdr xs) f (rchan tl)]
           | tl?ys:(List B) = q!(cons y ys) ) ) )
 
+{- flatMap: ∀A,B. f : A -> (List B); concatenate f(x) over xs, send (List B) on q -}
+def flatMap [#A #B xs:(List A) f:/[A /(List B)] q:/(List B)] =
+  if (null xs) then
+    q!nil
+  else
+    ( new h:^(List B)      {- result of f (car xs) -}
+      new t:^(List B)      {- flatMap result of tail -}
+      new a:^(List B)      {- combined list -}
+      ( f![(car xs) (rchan h)]
+      | flatMap![#A #B (cdr xs) f (rchan t)]
+      | h?hs:(List B) = t?ts:(List B) =     {- receive both before appending -}
+          append![#B hs ts (rchan a)]
+      | a?res:(List B) = q!res ) )
+
+{- dup: make a 2-element list [x, x] -}
+def dup [x:Int q:/(List Int)] =
+  q!(cons x (cons x nil))
+  
+{- inc: x ↦ x + 1, returning via q -}
+def increment [x:Int q:/Int] =
+  ( new s:^Int
+    ( +![x 1 (rchan s)]
+    | s?r:Int = q!r ))
+
 val xs = (cons 1 (cons 2 (cons 3 nil)))
 val ys = (cons 4 (cons 5 nil))
 
@@ -68,11 +86,11 @@ new a:^(List Int)
 run (
   append![#Int xs ys (rchan a)]
 | a?zs:(List Int) =
-    ( 
+    (
       ( print!"orig: " | printList!zs )
-    | ( new m:^(List Int)
-        ( mapList![#Int #Int zs increment (rchan m)]
-        | m?ms:(List Int) = ( print!"map(+1): " | printList!ms )
+    | ( new f:^(List Int)
+        ( flatMap![#Int #Int zs dup (rchan f)]
+        | f?fs:(List Int) = ( print!"flatMap(dup): " | printList!fs )
         )
       )
     )
