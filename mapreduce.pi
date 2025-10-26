@@ -69,6 +69,44 @@ def flatMap [#A #B xs:(List A) f:/[A /(List B)] q:/(List B)] =
           append![#B hs ts (rchan a)]
       | a?res:(List B) = q!res ) )
 
+{- mergePairs: merge two key-sorted lists of [Int V] using cmp, send result on q -}
+def mergePairs [#V xs:(List [Int V]) ys:(List [Int V]) cmp:/[Int Int /Bool] q:/(List [Int V])] =
+  if (null xs) then q!ys
+  else if (null ys) then q!xs
+  else
+    ( val [kx vx] = (car xs)
+      val [ky vy] = (car ys)
+      new le:^Bool
+      ( cmp![kx ky (rchan le)]
+      | le?isLE:Bool =
+          if isLE then
+            ( new rest:^(List [Int V])
+              ( mergePairs![#V (cdr xs) ys cmp (rchan rest)]
+              | rest?rs:(List [Int V]) = q!(cons [kx vx] rs) ) )
+          else
+            ( new rest:^(List [Int V])
+              ( mergePairs![#V xs (cdr ys) cmp (rchan rest)]
+              | rest?rs:(List [Int V]) = q!(cons [ky vy] rs) ) ) ) )
+
+{- print one tuple [Int Int] as (k:v) followed by a space -}
+def printPairKV p:[Int Int] =
+  ( val [k v] = p
+    ( print!"("
+    | printi!k
+    | print!":"
+    | printi!v
+    | print!") "
+    )
+  )
+  
+{- print a list of [Int Int] -}
+def printPairsKV xs:(List [Int Int]) =
+  if (null xs) then
+    print!"\n"
+  else
+    ( printPairKV!(car xs) 
+      | printPairsKV!(cdr xs) )
+    
 {- dup: make a 2-element list [x, x] -}
 def dup [x:Int q:/(List Int)] =
   q!(cons x (cons x nil))
@@ -79,19 +117,17 @@ def increment [x:Int q:/Int] =
     ( +![x 1 (rchan s)]
     | s?r:Int = q!r ))
 
-val xs = (cons 1 (cons 2 (cons 3 nil)))
-val ys = (cons 4 (cons 5 nil))
+{- compareInt: send (x <= y) on q -}
+def compareInt [x:Int y:Int q:/Bool] =
+  ( new b:^Bool
+    ( <=![x y (rchan b)]
+    | b?res = q!res ) )
+    
+val s1 = (cons [1 10] (cons [3 30] (cons [5 50] nil)))   {- sorted by key -}
+val s2 = (cons [2 20] (cons [4 40] nil))                 {- sorted by key -}
 
-new a:^(List Int)
+new out:^(List [Int Int])
 run (
-  append![#Int xs ys (rchan a)]
-| a?zs:(List Int) =
-    (
-      ( print!"orig: " | printList!zs )
-    | ( new f:^(List Int)
-        ( flatMap![#Int #Int zs dup (rchan f)]
-        | f?fs:(List Int) = ( print!"flatMap(dup): " | printList!fs )
-        )
-      )
-    )
+  mergePairs![#Int s1 s2 compareInt (rchan out)]
+| out?m:(List [Int Int]) = ( print!"merged: " | printPairsKV!m )
 )
