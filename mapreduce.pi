@@ -88,6 +88,39 @@ def mergePairs [#V xs:(List [Int V]) ys:(List [Int V]) cmp:/[Int Int /Bool] q:/(
               ( mergePairs![#V xs (cdr ys) cmp (rchan rest)]
               | rest?rs:(List [Int V]) = q!(cons [ky vy] rs) ) ) ) )
 
+{- tail helper: alternate elements into a and b, then send both -}
+def splitPairs_go [#V ys:(List [Int V]) a:(List [Int V]) b:(List [Int V]) q:/[(List [Int V]) (List [Int V])]] =
+  if (null ys) then
+    q![a b]
+  else if (null (cdr ys)) then
+    q![(cons (car ys) a) b]
+  else
+    splitPairs_go![#V (cdr (cdr ys)) (cons (car ys) a) (cons (car (cdr ys)) b) q]
+
+{- entry point -}
+def splitPairs [#V xs:(List [Int V]) q:/[(List [Int V]) (List [Int V])]] =
+  splitPairs_go![#V xs nil nil q]
+
+def msortPairs [#V xs:(List [Int V]) cmp:/[Int Int /Bool] q:/(List [Int V])] =
+  if (null xs) then
+    q!nil
+  else if (null (cdr xs)) then
+    q!xs
+  else
+    ( new halves:^[(List [Int V]) (List [Int V])]
+      ( splitPairs![#V xs (rchan halves)]
+      | halves?lr:[(List [Int V]) (List [Int V])] =
+          ( val left  = (fst lr)
+            val right = (snd lr)
+            new sl:^(List [Int V])
+            new sr:^(List [Int V])
+            new m:^(List [Int V])
+            ( msortPairs![#V left  cmp (rchan sl)]
+            | msortPairs![#V right cmp (rchan sr)]
+            | sl?l:(List [Int V]) = sr?r:(List [Int V]) =
+                mergePairs![#V l r cmp (rchan m)]
+            | m?res:(List [Int V]) = q!res ) ) ))
+            
 {- print one tuple [Int Int] as (k:v) followed by a space -}
 def printPairKV p:[Int Int] =
   ( val [k v] = p
@@ -123,11 +156,10 @@ def compareInt [x:Int y:Int q:/Bool] =
     ( <=![x y (rchan b)]
     | b?res = q!res ) )
     
-val s1 = (cons [1 10] (cons [3 30] (cons [5 50] nil)))   {- sorted by key -}
-val s2 = (cons [2 20] (cons [4 40] nil))                 {- sorted by key -}
+val u = (cons [3 30] (cons [1 10] (cons [4 40] (cons [2 20] nil))))
 
 new out:^(List [Int Int])
 run (
-  mergePairs![#Int s1 s2 compareInt (rchan out)]
-| out?m:(List [Int Int]) = ( print!"merged: " | printPairsKV!m )
+  msortPairs![#Int u compareInt (rchan out)]
+| out?sorted:(List [Int Int]) = ( print!"sorted: " | printPairsKV!sorted )
 )
