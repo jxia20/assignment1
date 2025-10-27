@@ -1,31 +1,65 @@
+import "Std/Prim"
 import "Std/List"
 import "Std/String"
 import "Std/Int"
 import "Std/Array"
 import "Std/Char"
 
-{- sub s start len q:stub substring: returns "" no matter what.This unblocks compilation, but is not correct, create later-}
-def sub [s:String start:Int len:Int q:/String] =
+{- charAt s idx q:
+   SHOULD send the 1-character string at position idx in s,
+   or "" if idx is out of range.
+   CURRENTLY A STUB. You will replace the body once you know
+   the real primitive from Std/String or Std/Char.
+-}
+def charAt [s:String idx:Int q:/String] =
   q!""
 
-{- strlen_loop s i q:Walk forward from index i until sub![s i 1 _] returns "".When that happens, i is the string length.-}
 def strlen_loop [s:String i:Int q:/Int] =
   ( new ch:^String
-    ( sub![s i 1 (rchan ch)]
+    ( charAt![s i (rchan ch)]
     | ch?c:String =
-        ( new isEmpty:^Bool
-          ( ==$![c "" (rchan isEmpty)]
-          | isEmpty?e:Bool =
-              if e then
+        ( new empty:^Bool
+          ( ==$![c "" (rchan empty)]
+          | empty?isEmpty:Bool =
+              if isEmpty then
                 q!i
               else
-                ( new ip1:^Int
-                  ( +![i 1 (rchan ip1)]
-                  | ip1?i1:Int =
-                      strlen_loop![s i1 (rchan q)] ) ) ) ) ) )
+                ( new i1:^Int
+                  ( +![i 1 (rchan i1)]
+                  | i1?nxt:Int =
+                      strlen_loop![s nxt (rchan q)] ) ) ) ) ) )
 
 def strlen [s:String q:/Int] =
   strlen_loop![s 0 (rchan q)]
+
+def sub_loop [s:String idx:Int remaining:Int acc:String q:/String] =
+  ( new done:^Bool
+    ( compareInt![remaining 0 (rchan done)]     {- remaining <= 0 ? -}
+    | done?stop:Bool =
+        if stop then
+          q!acc
+        else
+          ( new ch:^String
+            ( charAt![s idx (rchan ch)]
+            | ch?c:String =
+                ( new empty:^Bool
+                  ( ==$![c "" (rchan empty)]
+                  | empty?isEmpty:Bool =
+                      if isEmpty then
+                        {- ran off end of s -}
+                        q!acc
+                      else
+                        ( new acc2:^String
+                          ( +$![acc c (rchan acc2)]
+                          | acc2?accNext:String =
+                              ( new idx1:^Int
+                                new rem1:^Int
+                                ( +![idx 1 (rchan idx1)]
+                                | -![remaining 1 (rchan rem1)]
+                                | idx1?nextIdx:Int = rem1?nextRem:Int =
+                                    sub_loop![s nextIdx nextRem accNext (rchan q)] ) ) ) ) ) ) ) ) ) )
+def sub [s:String start:Int len:Int q:/String] =
+  sub_loop![s start len "" (rchan q)]
   
 {- append helper function. combines two lists -}
 def append [#X xs:(List X) ys:(List X) q:/(List X)] =
