@@ -120,17 +120,14 @@ def msortPairs [#V xs:(List [Int V]) cmp:/[Int Int /Bool] q:/(List [Int V])] =
             | sl?l:(List [Int V]) = sr?r:(List [Int V]) =
                 mergePairs![#V l r cmp (rchan m)]
             | m?res:(List [Int V]) = q!res ) ) ))
-            
+
 {- print one tuple [Int Int] as (k:v) followed by a space -}
 def printPairKV p:[Int Int] =
   ( val [k v] = p
-    ( print!"("
-    | printi!k
-    | print!":"
-    | printi!v
-    | print!") "
-    )
-  )
+      ( printi!k |
+        ( print!":" | 
+          ( printi!v |
+            print!"" ) ) ) )
   
 {- print a list of [Int Int] -}
 def printPairsKV xs:(List [Int Int]) =
@@ -155,11 +152,105 @@ def compareInt [x:Int y:Int q:/Bool] =
   ( new b:^Bool
     ( <=![x y (rchan b)]
     | b?res = q!res ) )
-    
-val u = (cons [3 30] (cons [1 10] (cons [4 40] (cons [2 20] nil))))
+
+{- eqInt : send (x == y) on q -}
+def eqInt [x:Int y:Int q:/Bool] =
+  ( new b:^Bool
+    ( ==![x y (rchan b)]
+    | b?res = q!res ) )
+
+{- collectSameKey: given a sorted list ys of [Int V], collect a maximal run of 'key' into acc
+   and return the (values, rest) on TWO channels: qa for values (in reverse), qb for rest. -}
+def collectSameKey [#V ys:(List [Int V]) key:Int acc:(List V)
+                    qa:/(List V) qb:/(List [Int V])] =
+  if (null ys) then
+    ( qa!acc | qb!nil )
+  else
+    ( val p = (car ys)
+      val k = (fst p)
+      val v = (snd p)
+      new eq:^Bool
+      ( eqInt![key k (rchan eq)]
+      | eq?same:Bool =
+          if same then
+            collectSameKey![#V (cdr ys) key (cons v acc) qa qb]
+          else
+            ( qa!acc | qb!ys ) ) )
+
+{- groupByKey: input must be sorted by key; produce [k (List V in original order)] -}
+def groupByKey [#V xs:(List [Int V]) q:/(List [Int (List V)])] =
+  if (null xs) then
+    q!nil
+  else
+    ( val p0 = (car xs)
+      val k0 = (fst p0)
+      val v0 = (snd p0)
+
+      new vals:^(List V)            
+      new rest:^(List [Int V])      
+
+      ( collectSameKey![#V (cdr xs) k0 (cons v0 nil) (rchan vals) (rchan rest)]
+      | vals?revVals:(List V) =
+          ( new fwd:^(List V)
+            ( rev![#V revVals (rchan fwd)]
+            | fwd?vs:(List V) =
+                rest?rem:(List [Int V]) =
+                  ( new tail:^(List [Int (List V)])
+                    ( groupByKey![#V rem (rchan tail)]
+                    | tail?gs:(List [Int (List V)]) =
+                        q!(cons [k0 vs] gs) ) ) ) ) ) )
+
+{- print a grouped item [Int (List Int)] as k:[v1 v2 ...] -}
+def printGroup g:[Int (List Int)] =
+  ( val [k vs] = g
+    ( printi!k
+    | printList!vs
+    )
+  )
+
+def printGroups gs:(List [Int (List Int)]) =
+  if (null gs) then print!""
+  else ( printGroup!(car gs) | printGroups!(cdr gs) )
+
+{- printListSync: print a (List Int) then signal when done -}
+def printListSync [xs:(List Int) q:/[]] =
+  if (null xs) then
+    q![]
+  else
+    ( printi!(car xs)
+    | print!" "
+    | printListSync![(cdr xs) q] )
+
+{- printGroupSync: print one group k:[v1 v2 ...] + newline, then ack -}
+def printGroupSync [g:[Int (List Int)] q:/[]] =
+  ( val [k vs] = g
+    ( printi!k
+    | print!":" 
+    | ( new done:^[]
+        ( printListSync![vs (rchan done)]
+        | done?[] = ( print!"\n" | q![] ) ) ) ) )
+
+{- printGroupsSync: print groups sequentially by waiting for each ack -}
+def printGroupsSync [gs:(List [Int (List Int)]) q:/[]] =
+  if (null gs) then q![]
+  else
+    ( new k:^[]
+      ( printGroupSync![(car gs) (rchan k)]
+      | k?[] = printGroupsSync![(cdr gs) q] ) )
+      
+val u = (cons [3 30] (cons [1 10] (cons [4 40] (cons [2 20] (cons [2 22] (cons [3 33] nil))))))
 
 new out:^(List [Int Int])
+new sorted:^(List [Int Int])
+new grouped:^(List [Int (List Int)])
 run (
-  msortPairs![#Int u compareInt (rchan out)]
-| out?sorted:(List [Int Int]) = ( print!"sorted: " | printPairsKV!sorted )
+  msortPairs![#Int u compareInt (rchan sorted)]
+| sorted?s:(List [Int Int]) =
+    ( print!"sorted: " | printPairsKV!s
+    | groupByKey![#Int s (rchan grouped)] )
+| grouped?g:(List [Int (List Int)]) =
+    ( print!"grouped:\n" |
+      (new done:^[]
+        ( printGroupsSync![g (rchan done)]
+        | done?[] = print!"" ) ) )
 )
