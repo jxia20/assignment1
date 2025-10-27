@@ -4,6 +4,8 @@ import "Std/Int"
 import "Std/Array"
 import "Std/Char"
 
+val needle = "is"
+
 def clampNonNeg [x:Int q:/Int] =
   ( new le0:^Bool
     ( <=![x 0 (rchan le0)]
@@ -519,8 +521,6 @@ val inputS =
   (cons [14 "  They also serve who only stand and waite."]
         nil))))))))))))))
 
-val needle = "is"
-
 def compareWordLen [a:String b:String q:/Bool] =
   ( new la:^Int
     new lb:^Int
@@ -622,13 +622,16 @@ def mapSearch [needle:String p:[Int String] q:/(List [String Int])] =
                     if e then
                       go![(cdr xs) acc (rchan q)]
                     else
-                      ( new hit:^Bool
-                        ( containsSubstr![needle w (rchan hit)]    
-                        | hit?ok:Bool =
-                            if ok then
-                              go![(cdr xs) (cons [w ln] acc) (rchan q)]
-                            else
-                              go![(cdr xs) acc (rchan q)] ) ) ) )
+                      ( new wlow:^String
+                        ( toLowerStr![w (rchan wlow)]
+                        | wlow?wk:String =
+                            ( new hit:^Bool
+                              ( containsSubstr![needle w (rchan hit)]
+                              | hit?ok:Bool =
+                                  if ok then
+                                    go![(cdr xs) (cons [wk ln] acc) (rchan q)]
+                                  else
+                              go![(cdr xs) acc (rchan q)] ) ) ) ) ) )
           new out:^(List [String Int])
           ( go![ws nil (rchan out)]
           | out?res:(List [String Int]) = q!res ) ) ) )
