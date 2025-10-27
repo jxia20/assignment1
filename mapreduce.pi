@@ -174,6 +174,9 @@ def splitPairs_go [#V ys:(List [Int V]) a:(List [Int V]) b:(List [Int V]) q:/[(L
 def splitPairs [#V xs:(List [Int V]) q:/[(List [Int V]) (List [Int V])]] =
   splitPairs_go![#V xs nil nil q]
 
+def leStr [a:String b:String q:/Bool] =
+  <=$![a b (rchan q)]
+
 def msortPairs [#V xs:(List [Int V]) cmp:/[Int Int /Bool] q:/(List [Int V])] =
   if (null xs) then
     q!nil
@@ -562,89 +565,6 @@ def isPunctChar [c:String q:/Bool] =
                             | b4?colon:Bool =
                                 if colon then q!true else q!false ) ) ) ) ) ) ) )
 
-def stripPunctLoop [s:String n:Int q:/String] =
-  ( new isZero:^Bool
-    ( eqInt![n 0 (rchan isZero)]
-    | isZero?z:Bool =
-        if z then
-          q!s
-        else
-          ( new n1:^Int
-            ( -![n 1 (rchan n1)]
-            | n1?idx:Int =
-                ( new lastChar:^String
-                  ( sub![s idx 1 (rchan lastChar)]
-                  | lastChar?ch:String =
-                      ( new isp:^Bool
-                        ( isPunctChar![ch (rchan isp)]
-                        | isp?pun:Bool =
-                            if pun then
-                              ( new prefix:^String
-                                ( sub![s 0 idx (rchan prefix)]
-                                | prefix?pref:String =
-                                    stripPunctLoop![pref idx (rchan q)] ) )
-                            else
-                              q!s ) ) ) ) ) ) ) )
-
-def stripPunct [s:String q:/String] =
-  ( new n:^Int
-    ( strlen![s (rchan n)]
-    | n?len:Int =
-        stripPunctLoop![s len (rchan q)] ) )
-
-def finishSplitWords [acc:(List String) curr:String q:/(List String)] =
-  ( new emptyCurr:^Bool
-    ( eqStr![curr "" (rchan emptyCurr)]
-    | emptyCurr?isEmpty:Bool =
-        ( new revIn:^(List String)
-          ( if isEmpty then
-              rev![#String acc (rchan revIn)]
-            else
-              rev![#String (cons curr acc) (rchan revIn)]
-          | revIn?out:(List String) = q!out ) ) ) )
-def splitWords_loop [s:String len:Int i:Int curr:String acc:(List String) q:/(List String)] =
-  ( new atEnd:^Bool
-    ( eqInt![i len (rchan atEnd)]
-    | atEnd?done:Bool =
-        if done then
-          finishSplitWords![acc curr (rchan q)]
-        else
-          ( new ch:^String
-            ( sub![s i 1 (rchan ch)]
-            | ch?c:String =
-                ( new isSpace:^Bool
-                  ( ==$![c " " (rchan isSpace)]
-                  | isSpace?sp:Bool =
-                      if sp then
-                        {- we hit a space: flush curr (if not empty) into acc, reset curr="" -}
-                        ( new emptyCurr:^Bool
-                          ( eqStr![curr "" (rchan emptyCurr)]
-                          | emptyCurr?e:Bool =
-                              ( new acc2:^(List String)
-                                ( if e then
-                                    acc2!acc
-                                  else
-                                    acc2!(cons curr acc)
-                                | acc2?a2:(List String) =
-                                    ( new ip1:^Int
-                                      ( +![i 1 (rchan ip1)]
-                                      | ip1?i1:Int =
-                                          splitWords_loop![s len i1 "" a2 (rchan q)] ) ) ) ) ) )
-                      else
-                        {- normal char: append to curr, continue -}
-                        ( new newCurr:^String
-                          ( +$![curr c (rchan newCurr)]
-                          | newCurr?nc:String =
-                              ( new ip1:^Int
-                                ( +![i 1 (rchan ip1)]
-                                | ip1?i1:Int =
-                                    splitWords_loop![s len i1 nc acc (rchan q)] ) ) ) ) ) ) ) ) ) )
-def splitWords [s:String q:/(List String)] =
-  ( new len:^Int
-    ( strlen![s (rchan len)]
-    | len?n:Int =
-        splitWords_loop![s n 0 "" nil (rchan q)] ) )
-
 def containsFromOffset [needle:String hay:String mlen:Int i:Int limit:Int q:/Bool] =
   ( new within:^Bool
     ( compareInt![i limit (rchan within)]   {- i <= limit ? -}
@@ -665,43 +585,53 @@ def containsFromOffset [needle:String hay:String mlen:Int i:Int limit:Int q:/Boo
                               containsFromOffset![needle hay mlen nextI limit (rchan q)] ) ) ) ) ) )
         else
           q!false ) )
+          
+def lowerAt [s:String i:Int q:/Char] =
+  ( new ch:^Char
+    ( string.nth![s i (rchan ch)]
+    | ch?c:Char = char.toLower![c (rchan q)] ) )
+
+def toLowerStr [s:String q:/String] =
+  ( new n:^Int
+    ( string.size![s (rchan n)]
+    | n?L:Int =
+        ( def f [i:Int q:/Char] = lowerAt![s i (rchan q)]
+          string.tabulate![L f (rchan q)] ) ) )
 
 def containsSubstr [needle:String hay:String q:/Bool] =
-  ( new m:^Int
-    new n:^Int
-    ( strlen![needle (rchan m)]
-    | strlen![hay (rchan n)]
-    | m?mlen:Int = n?nlen:Int =
-        ( new diff:^Int
-          ( -![nlen mlen (rchan diff)]
-          | diff?limit:Int =
-              containsFromOffset![needle hay mlen 0 limit (rchan q)] ) ) ) )
-
-def mapSearchWords [needle:String ws:(List String) ln:Int q:/(List [String Int])] =
-  if (null ws) then
-    q!nil
-  else
-    ( new cleaned:^String
-      new tail:^(List [String Int])
-      ( stripPunct![(car ws) (rchan cleaned)]
-      | mapSearchWords![needle (cdr ws) ln (rchan tail)]
-      | cleaned?cw:String =
-          ( new hit:^Bool
-            ( containsSubstr![needle cw (rchan hit)]
-            | hit?ok:Bool =
-                tail?ts:(List [String Int]) =
-                  if ok then
-                    q!(cons [cw ln] ts)
-                  else
-                    q!ts ) ) ) )
+  ( new nlow:^String new hlow:^String
+    ( toLowerStr![needle (rchan nlow)]
+    | toLowerStr![hay    (rchan hlow)]
+    | nlow?n1:String = hlow?h1:String =
+        string.in![n1 h1 (rchan q)] ) )
 
 def mapSearch [needle:String p:[Int String] q:/(List [String Int])] =
-  ( val ln   = (fst p)     {- line number -}
-    val line = (snd p)     {- line text   -}
-    new words:^(List String)
-    ( splitWords![line (rchan words)]
-    | words?ws:(List String) =
-        mapSearchWords![needle ws ln (rchan q)] ) )
+  ( val ln   = (fst p)
+    val line = (snd p)
+    new toks:^(List String)
+    ( string.split![" ,;:.!?\t\n" line (rchan toks)]
+    | toks?ws:(List String) =
+        ( def go [xs:(List String) acc:(List [String Int]) q:/(List [String Int])] =
+            if (null xs) then
+              q!acc
+            else
+              ( val w = (car xs)
+                new isEmpty:^Bool
+                ( ==$![w "" (rchan isEmpty)]
+                | isEmpty?e:Bool =
+                    if e then
+                      go![(cdr xs) acc (rchan q)]
+                    else
+                      ( new hit:^Bool
+                        ( containsSubstr![needle w (rchan hit)]    
+                        | hit?ok:Bool =
+                            if ok then
+                              go![(cdr xs) (cons [w ln] acc) (rchan q)]
+                            else
+                              go![(cdr xs) acc (rchan q)] ) ) ) )
+          new out:^(List [String Int])
+          ( go![ws nil (rchan out)]
+          | out?res:(List [String Int]) = q!res ) ) ) )
 
 def mapSearchBound [p:[Int String] q:/(List [String Int])] =
   mapSearch![needle p (rchan q)]
@@ -710,8 +640,14 @@ def reduceKeepLines [g:[String (List Int)] q:/(List [String (List Int)])] =
   q!(cons g nil)
 
 def printIntListInline [xs:(List Int) q:/[]] =
-  if (null xs) then q![]
-  else ( printi!(car xs) | print!" " | printIntListInline![(cdr xs) q] )
+  if (null xs) then
+    q![]
+  else
+    ( new s:^String
+      ( +$![(int.toString (car xs)) " " (rchan s)]
+      | s?t:String =
+          ( print!t
+          | printIntListInline![(cdr xs) (rchan q)] ) ) )
 
 def printGroupS [g:[String (List Int)] q:/[]] =
   ( print!(fst g) | print!": "
@@ -725,12 +661,39 @@ def printGroupsS [gs:(List [String (List Int)]) q:/[]] =
     ( new k:^[]
       ( printGroupS![(car gs) (rchan k)]
       | k?[] = printGroupsS![(cdr gs) q] ) )
+      
+def flatMapIS [xs:(List [Int String])
+               f:/[[Int String] /(List [String Int])]
+               q:/(List [String Int])] =
+  if (null xs) then
+    q!nil
+  else
+    ( new h:^(List [String Int]) new t:^(List [String Int]) new a:^(List [String Int])
+      ( f![(car xs) (rchan h)]
+      | flatMapIS![(cdr xs) f (rchan t)]
+      | h?hs:(List [String Int]) = t?ts:(List [String Int]) =
+          appendPairsS![#Int hs ts (rchan a)]
+      | a?res:(List [String Int]) = q!res ) )
 
-new out:^String
+new mapped:^(List [String Int])
+new sorted:^(List [String Int])
+new grouped:^(List [String (List Int)])
+new reduced:^(List [String (List Int)])
 run (
-  stripPunct!["wide," (rchan out)]
-| out?cleaned:String =
-    ( print!"stripPunct wide,: "
-    | print!cleaned
-    | print!"\n" )
+  flatMapIS![inputS mapSearchBound (rchan mapped)]
+
+  | mapped?m:(List [String Int]) =
+      msortPairsS![#Int m leStr (rchan sorted)]
+  
+  | sorted?s:(List [String Int]) =
+      groupByKeyS![#Int s (rchan grouped)]
+  
+  | grouped?g:(List [String (List Int)]) =
+      flatMapGroupsS![#Int #(List Int) g reduceKeepLines (rchan reduced)]
+  
+  | reduced?out:(List [String (List Int)]) =
+      ( new done:^[]
+        ( print!"matches:\n"
+        | printGroupsS![out (rchan done)]
+        | done?[] = print!"--end--\n" ) )
 )
