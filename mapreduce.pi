@@ -4,28 +4,40 @@ import "Std/Int"
 import "Std/Array"
 import "Std/Char"
 
-{- sub s start len q:stub substring: returns "" no matter what.This unblocks compilation, but is not correct, create later-}
-def sub [s:String start:Int len:Int q:/String] =
-  q!""
+def clampNonNeg [x:Int q:/Int] =
+  ( new le0:^Bool
+    ( <=![x 0 (rchan le0)]
+    | le0?yes:Bool = if yes then q!0 else q!x ) )
 
-{- strlen_loop s i q:Walk forward from index i until sub![s i 1 _] returns "".When that happens, i is the string length.-}
-def strlen_loop [s:String i:Int q:/Int] =
-  ( new ch:^String
-    ( sub![s i 1 (rchan ch)]
-    | ch?c:String =
-        ( new isEmpty:^Bool
-          ( ==$![c "" (rchan isEmpty)]
-          | isEmpty?e:Bool =
-              if e then
-                q!i
-              else
-                ( new ip1:^Int
-                  ( +![i 1 (rchan ip1)]
-                  | ip1?i1:Int =
-                      strlen_loop![s i1 (rchan q)] ) ) ) ) ) )
+def min2 [a:Int b:Int q:/Int] =
+  ( new le:^Bool
+    ( <=![a b (rchan le)]
+    | le?ok:Bool = if ok then q!a else q!b ) )
+
+def sub [s:String start:Int len:Int q:/String] =
+  ( new L:^Int
+    ( string.size![s (rchan L)]
+    | L?n:Int =
+        ( new s0:^Int new l0:^Int
+          ( clampNonNeg![start (rchan s0)]
+          | clampNonNeg![len   (rchan l0)]
+          | s0?st:Int = l0?ln:Int =
+              ( new tooFar:^Bool
+                ( <=![n st (rchan tooFar)]           {- n <= st ? (start >= size) -}
+                | tooFar?out:Bool =
+                    if out then
+                      q!""                              {- past end ⇒ empty -}
+                    else
+                      ( new maxLen:^Int
+                        ( -![n st (rchan maxLen)]       {- max allowed len = n - st -}
+                        | maxLen?ml:Int =
+                            ( new useLen:^Int
+                              ( min2![ln ml (rchan useLen)]
+                              | useLen?k:Int =
+                                  string.sub![s st k (rchan q)] ) ) ) ) ) ) ) ) ) )
 
 def strlen [s:String q:/Int] =
-  strlen_loop![s 0 (rchan q)]
+  string.size![s (rchan q)]
   
 {- append helper function. combines two lists -}
 def append [#X xs:(List X) ys:(List X) q:/(List X)] =
