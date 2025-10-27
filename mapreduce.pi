@@ -12,6 +12,15 @@ def append [#X xs:(List X) ys:(List X) q:/(List X)] =
       ( append![#X (cdr xs) ys (rchan k)]
       | k?zs:(List X) = q!(cons (car xs) zs) ))
 
+{- appendPairs: ∀T. append (List [Int T]) ++ (List [Int T]) -}
+def appendPairs [#T xs:(List [Int T]) ys:(List [Int T]) q:/(List [Int T])] =
+  if (null xs) then
+    q!ys
+  else
+    ( new k:^ (List [Int T])
+      ( appendPairs![#T (cdr xs) ys (rchan k)]
+      | k?zs:(List [Int T]) = q!(cons (car xs) zs) ))
+
 {- printer list helper function. prints all values of a list of type integer -}
 def printList xs:(List Int) =
   if (null xs) then
@@ -68,6 +77,34 @@ def flatMap [#A #B xs:(List A) f:/[A /(List B)] q:/(List B)] =
       | h?hs:(List B) = t?ts:(List B) =     {- receive both before appending -}
           append![#B hs ts (rchan a)]
       | a?res:(List B) = q!res ) )
+      
+{- flatMap over pairs: xs : (List [Int V]), f : [Int V] -> (List [Int V]) -}
+def flatMapPairs [#V xs:(List [Int V]) f:/[[Int V] /(List [Int V])] q:/(List [Int V])] =
+  if (null xs) then
+    q!nil
+  else
+    ( new h:^(List [Int V])
+      new t:^(List [Int V])
+      new a:^(List [Int V])
+      ( f![(car xs) (rchan h)]
+      | flatMapPairs![#V (cdr xs) f (rchan t)]
+      | h?hs:(List [Int V]) = t?ts:(List [Int V]) =
+          appendPairs![#V hs ts (rchan a)]
+      | a?res:(List [Int V]) = q!res ) )
+
+{- flatMap over groups: xs : (List [Int (List V)]), f : [Int (List V)] -> (List [Int W]) -}
+def flatMapGroups [#V #W xs:(List [Int (List V)]) f:/[[Int (List V)] /(List [Int W])] q:/(List [Int W])] =
+  if (null xs) then
+    q!nil
+  else
+    ( new h:^(List [Int W])
+      new t:^(List [Int W])
+      new a:^(List [Int W])
+      ( f![(car xs) (rchan h)]
+      | flatMapGroups![#V #W (cdr xs) f (rchan t)]
+      | h?hs:(List [Int W]) = t?ts:(List [Int W]) =
+          appendPairs![#W hs ts (rchan a)]
+      | a?res:(List [Int W]) = q!res ) )
 
 {- mergePairs: merge two key-sorted lists of [Int V] using cmp, send result on q -}
 def mergePairs [#V xs:(List [Int V]) ys:(List [Int V]) cmp:/[Int Int /Bool] q:/(List [Int V])] =
@@ -237,20 +274,66 @@ def printGroupsSync [gs:(List [Int (List Int)]) q:/[]] =
     ( new k:^[]
       ( printGroupSync![(car gs) (rchan k)]
       | k?[] = printGroupsSync![(cdr gs) q] ) )
-      
-val u = (cons [3 30] (cons [1 10] (cons [4 40] (cons [2 20] (cons [2 22] (cons [3 33] nil))))))
+
+{- mapReduce (Int keys):
+   1) flatMap mapF over input
+   2) sort by cmp
+   3) group by key
+   4) flatMap reduceF over groups
+   -> send final (List [Int W]) on q
+-}
+def mapReduce [#V #W
+              mapF:/[[Int V] /(List [Int V])]
+              cmp:/[Int Int /Bool]
+              reduceF:/[[Int (List V)] /(List [Int W])]
+              input:(List [Int V]) q:/(List [Int W])] =
+  ( new mapped:^(List [Int V])
+    new sorted:^(List [Int V])
+    new grouped:^(List [Int (List V)])
+    new reduced:^(List [Int W])
+
+    {- 1) flatMap mapF over input -}
+    ( flatMapPairs![#V input mapF (rchan mapped)]
+
+    {- 2) sort by key -}
+    | mapped?m:(List [Int V]) =
+        msortPairs![#V m cmp (rchan sorted)]
+
+    {- 3) group -}
+    | sorted?s:(List [Int V]) =
+        groupByKey![#V s (rchan grouped)]
+
+    {- 4) flatMap reduceF over groups -}
+    | grouped?g:(List [Int (List V)]) =
+        flatMapGroups![#V #W g reduceF (rchan reduced)]
+
+    {- done -}
+    | reduced?out:(List [Int W]) = q!out ) )
+
+{- test map: duplicate each pair (k,v) -> [(k,v),(k,v)] -}
+def mapDup [p:[Int Int] q:/(List [Int Int])] =
+  ( val [k v] = p
+  q!(cons [k v] (cons [k v] nil)) )
+
+{- sum a list of Ints, sending the result on r -}
+def sumList [xs:(List Int) r:/Int] =
+  if (null xs) then
+    r!0
+  else
+    ( new t:^Int
+      ( sumList![(cdr xs) (rchan t)]
+      | t?s:Int = +![(car xs) s (rchan r)] ))
+
+{- reduceSum: sum values per key → single pair [k, sum] inside a 1-element list -}
+def reduceSum [g:[Int (List Int)] q:/(List [Int Int])] =
+  ( val [k vs] = g
+    new s:^Int
+    ( sumList![vs (rchan s)]
+    | s?total:Int = q!(cons [k total] nil) ))
+
+val test = (cons [1 5] (cons [2 7] nil))
 
 new out:^(List [Int Int])
-new sorted:^(List [Int Int])
-new grouped:^(List [Int (List Int)])
 run (
-  msortPairs![#Int u compareInt (rchan sorted)]
-| sorted?s:(List [Int Int]) =
-    ( print!"sorted: " | printPairsKV!s
-    | groupByKey![#Int s (rchan grouped)] )
-| grouped?g:(List [Int (List Int)]) =
-    ( print!"grouped:\n" |
-      (new done:^[]
-        ( printGroupsSync![g (rchan done)]
-        | done?[] = print!"" ) ) )
+  flatMapPairs![#Int test mapDup (rchan out)] | out?r:(List [Int Int]) = ( print!"flatMapPairs(mapDup): " | printPairsKV!r )
 )
