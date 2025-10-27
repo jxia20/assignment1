@@ -123,26 +123,26 @@ val out1 = (mapReduce ex_map ex_cmp ex_red input1)
 def eqList (xs ys) =
   (if (null xs) then (null ys)
    else if (null ys) then false
-   else
-     (and (== (car xs) (car ys))
-          (eqList (cdr xs) (cdr ys))) )
+   else if (== (car xs) (car ys))
+        then (eqList (cdr xs) (cdr ys))
+        else false
+  )
 
 def eqKVList (xs ys) =
-  if (null xs) then (null ys)
-  else if (null ys) then false
-  else
-    ( let px = (car xs) in
-      let py = (car ys) in
-      let kx = (fst px) in
-      let ky = (fst py) in
-      let vx = (snd px) in
-      let vy = (snd py) in
-      (and (== kx ky)
-           (and (eqList vx vy)
-                (eqKVList (cdr xs) (cdr ys)))) )
+  (if (null xs) then (null ys)
+   else if (null ys) then false
+   else
+     ( let px = (car xs) in
+       let py = (car ys) in
+       let kx = (fst px) in
+       let ky = (fst py) in
+       let vx = (snd px) in
+       let vy = (snd py) in
+       (if (== kx ky)
+        then (if (eqList vx vy)
+              then (eqKVList (cdr xs) (cdr ys))
+              else false)
+        else false ) ) )
 
-def main =
-  if (eqKVList out1 expected1) then
-    print!"PASS Example 1\n"
-  else
-    print!"FAIL Example 1\n"
+def main () =
+  (eqKVList out1 expected1)
