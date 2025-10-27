@@ -652,11 +652,25 @@ def printIntListInline [xs:(List Int) q:/[]] =
           ( print!t
           | printIntListInline![(cdr xs) (rchan q)] ) ) )
 
+def joinIntsWithSpaces [xs:(List Int) q:/String] =
+  if (null xs) then
+    q!""
+  else
+    ( new tail:^String
+      ( joinIntsWithSpaces![(cdr xs) (rchan tail)]
+      | tail?rest:String =
+          ( new here:^String
+            ( +$![(int.toString (car xs)) " " (rchan here)]
+            | here?h:String =
+                ( new out:^String
+                  ( +$![h rest (rchan out)]
+                  | out?z:String = q!z ) ) ) ) ) )
+
 def printGroupS [g:[String (List Int)] q:/[]] =
-  ( print!(fst g) | print!": "
-  | (new done:^[]
-    ( printIntListInline![(snd g) (rchan done)]
-    | done?[] = ( print!"\n" | q![] ) ) ))
+  ( new nums:^String
+    ( joinIntsWithSpaces![(snd g) (rchan nums)]
+    | nums?line:String =
+        ( print!(fst g) | print!": " | print!line | print!"\n" | q![] ) ) )
 
 def printGroupsS [gs:(List [String (List Int)]) q:/[]] =
   if (null gs) then q![]
