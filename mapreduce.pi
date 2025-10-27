@@ -612,35 +612,78 @@ def mapSearch [needle:String p:[Int String] q:/(List [String Int])] =
     ( string.split![" ,;:.!?\t\n" line (rchan toks)]
     | toks?ws:(List String) =
         ( def go [xs:(List String) acc:(List [String Int]) q:/(List [String Int])] =
-            if (null xs) then
-              q!acc
-            else
-              ( val w = (car xs)
-                new isEmpty:^Bool
-                ( ==$![w "" (rchan isEmpty)]
-                | isEmpty?e:Bool =
-                    if e then
-                      go![(cdr xs) acc (rchan q)]
-                    else
-                      ( new wlow:^String
-                        ( toLowerStr![w (rchan wlow)]
-                        | wlow?wk:String =
-                            ( new hit:^Bool
-                              ( containsSubstr![needle w (rchan hit)]
-                              | hit?ok:Bool =
-                                  if ok then
-                                    go![(cdr xs) (cons [wk ln] acc) (rchan q)]
-                                  else
-                              go![(cdr xs) acc (rchan q)] ) ) ) ) ) )
-          new out:^(List [String Int])
-          ( go![ws nil (rchan out)]
-          | out?res:(List [String Int]) = q!res ) ) ) )
+            if (null xs) then q!acc else
+            ( val w = (car xs)
+              new isEmpty:^Bool
+              ( ==$![w "" (rchan isEmpty)]
+              | isEmpty?e:Bool =
+                  if e then
+                    go![(cdr xs) acc (rchan q)]
+                  else
+                    ( new wlow:^String
+                      ( toLowerStr![w (rchan wlow)]
+                      | wlow?wk:String =
+                          ( new hit:^Bool
+                            ( containsSubstr![needle w (rchan hit)]
+                            | hit?ok:Bool =
+                                if ok then
+                                  go![(cdr xs) (cons [wk ln] acc) (rchan q)]
+                                else
+                                  go![(cdr xs) acc (rchan q)] ) ) ) ) ) )
+          new acc:^(List [String Int])
+          ( go![ws nil (rchan acc)]
+          | acc?a:(List [String Int]) =
+              ( new fwd:^(List [String Int])
+                ( rev![#[String Int] a (rchan fwd)]
+                | fwd?out:(List [String Int]) = q!out ) ) ) ) ) )
 
 def mapSearchBound [p:[Int String] q:/(List [String Int])] =
   mapSearch![needle p (rchan q)]
-  
+
+def mergeInt [xs:(List Int) ys:(List Int) q:/(List Int)] =
+  if (null xs) then q!ys
+  else if (null ys) then q!xs
+  else
+    ( new le:^Bool
+      ( <=![(car xs) (car ys) (rchan le)]
+      | le?ok:Bool =
+          if ok then
+            ( new r:^(List Int)
+              ( mergeInt![(cdr xs) ys (rchan r)]
+              | r?rs:(List Int) = q!(cons (car xs) rs) ) )
+          else
+            ( new r:^(List Int)
+              ( mergeInt![xs (cdr ys) (rchan r)]
+              | r?rs:(List Int) = q!(cons (car ys) rs) ) ) ) )
+
+def splitInt_go [ys:(List Int) a:(List Int) b:(List Int) q:/[(List Int) (List Int)]] =
+  if (null ys) then q![a b]
+  else if (null (cdr ys)) then q![(cons (car ys) a) b]
+  else splitInt_go![(cdr (cdr ys)) (cons (car ys) a) (cons (car (cdr ys)) b) q]
+
+def splitInt [xs:(List Int) q:/[(List Int) (List Int)]] =
+  splitInt_go![xs nil nil (rchan q)]
+
+def msortInt [xs:(List Int) q:/(List Int)] =
+  if (null xs) then q!nil
+  else if (null (cdr xs)) then q!xs
+  else
+    ( new halves:^[(List Int) (List Int)]
+      ( splitInt![xs (rchan halves)]
+      | halves?lr:[(List Int) (List Int)] =
+          ( val left  = (fst lr)
+            val right = (snd lr)
+            new sl:^(List Int) new sr:^(List Int)
+            ( msortInt![left  (rchan sl)]
+            | msortInt![right (rchan sr)]
+            | sl?l:(List Int) = sr?r:(List Int) = mergeInt![l r (rchan q)] ) ) ) )
+
 def reduceKeepLines [g:[String (List Int)] q:/(List [String (List Int)])] =
-  q!(cons g nil)
+  ( val w  = (fst g)
+    val vs = (snd g)
+    new svs:^(List Int)
+    ( msortInt![vs (rchan svs)]
+    | svs?sorted:(List Int) = q!(cons [w sorted] nil) ) )
 
 def printIntListInline [xs:(List Int) q:/[]] =
   if (null xs) then
