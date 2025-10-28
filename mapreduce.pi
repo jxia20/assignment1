@@ -3,9 +3,26 @@ import "Std/String"
 import "Std/Int"
 import "Std/Array"
 import "Std/Char"
+import "Std/Float"
 
 val needle = "is"
-
+val inputS =
+  (cons [1  "WHEN I consider how my light is spent"]
+  (cons [2  "  E're half my days, in this dark world and wide,"]
+  (cons [3  "  And that one Talent which is death to hide,"]
+  (cons [4  "  Lodg'd with me useless, though my Soul more bent"]
+  (cons [5  "To serve therewith my Maker, and present"]
+  (cons [6  "  My true account, least he returning chide,"]
+  (cons [7  "  Doth God exact day-labour, light deny'd,"]
+  (cons [8  "  I fondly ask; But patience to prevent"]
+  (cons [9  "That murmur, soon replies, God doth not need"]
+  (cons [10 "  Either man's work or his own gifts, who best"]
+  (cons [11 "  Bear his milde yoak, they serve him best, his State"]
+  (cons [12 "Is Kingly. Thousands at his bidding speed"]
+  (cons [13 "  And post o're Land and Ocean without rest:"]
+  (cons [14 "  They also serve who only stand and waite."]
+        nil))))))))))))))
+        
 def clampNonNeg [x:Int q:/Int] =
   ( new le0:^Bool
     ( <=![x 0 (rchan le0)]
@@ -504,23 +521,6 @@ def concatStrings [xs:(List String) q:/String] =
             ( +$![(car xs) rs (rchan c)]
             | c?z:String = q!z ) ) ) )
 
-val inputS =
-  (cons [1  "WHEN I consider how my light is spent"]
-  (cons [2  "  E're half my days, in this dark world and wide,"]
-  (cons [3  "  And that one Talent which is death to hide,"]
-  (cons [4  "  Lodg'd with me useless, though my Soul more bent"]
-  (cons [5  "To serve therewith my Maker, and present"]
-  (cons [6  "  My true account, least he returning chide,"]
-  (cons [7  "  Doth God exact day-labour, light deny'd,"]
-  (cons [8  "  I fondly ask; But patience to prevent"]
-  (cons [9  "That murmur, soon replies, God doth not need"]
-  (cons [10 "  Either man's work or his own gifts, who best"]
-  (cons [11 "  Bear his milde yoak, they serve him best, his State"]
-  (cons [12 "Is Kingly. Thousands at his bidding speed"]
-  (cons [13 "  And post o're Land and Ocean without rest:"]
-  (cons [14 "  They also serve who only stand and waite."]
-        nil))))))))))))))
-
 def compareWordLen [a:String b:String q:/Bool] =
   ( new la:^Int
     new lb:^Int
@@ -703,9 +703,7 @@ def reduceKeepLines [g:[String (List Int)] q:/(List [String (List Int)])] =
     new svs:^(List Int)
     ( msortInt![vs (rchan svs)]
     | svs?sorted:(List Int) =
-        ( new uniq:^(List Int)
-          ( dedupSortedInts![sorted (rchan uniq)]
-          | uniq?u:(List Int) = q!(cons [w u] nil) ) ) ) )
+        q!(cons [w sorted] nil) ) ) 
 
 def printIntListInline [xs:(List Int) q:/[]] =
   if (null xs) then
@@ -785,25 +783,117 @@ def flatMapIS [xs:(List [Int String])
           appendPairsS![#Int hs ts (rchan a)]
       | a?res:(List [String Int]) = q!res ) )
 
-new mapped:^(List [String Int])
-new sorted:^(List [String Int])
-new grouped:^(List [String (List Int)])
-new reduced:^(List [String (List Int)])
-run (
-  flatMapIS![inputS mapSearchBound (rchan mapped)]
+def wordCountLine [s:String q:/Int] =
+  ( new toks:^(List String)
+    ( string.split![" ,;:.!?\t\n" s (rchan toks)]
+    | toks?ws:(List String) =
+        ( def count [xs:(List String) acc:Int q:/Int] =
+            if (null xs) then q!acc else
+              ( new empty:^Bool
+                ( ==$![(car xs) "" (rchan empty)]
+                | empty?e:Bool =
+                    if e then count![(cdr xs) acc (rchan q)]
+                    else ( new acc1:^Int ( +![acc 1 (rchan acc1)] | acc1?n:Int = count![(cdr xs) n (rchan q)] ) ) ) )
+          count![ws 0 (rchan q)] ) ) )
 
-  | mapped?m:(List [String Int]) =
-      msortPairsS![#Int m leStr (rchan sorted)]
-  
-  | sorted?s:(List [String Int]) =
-      groupByKeyS![#Int s (rchan grouped)]
-  
-  | grouped?g:(List [String (List Int)]) =
-      flatMapGroupsS![#Int #(List Int) g reduceKeepLines (rchan reduced)]
-  
-  | reduced?out:(List [String (List Int)]) =
-      ( new done:^[]
-        ( print!"matches:\n"
-        | printGroupsS![out (rchan done)]
-        | done?[] = print!"--end--\n" ) )
+def tokenCharsLine [s:String q:/Int] =
+  ( new toks:^(List String)
+    ( string.split![" ,;:.!?\t\n" s (rchan toks)]
+    | toks?ws:(List String) =
+        ( def sumlen [xs:(List String) acc:Int q:/Int] =
+            if (null xs) then q!acc else
+              ( new empty:^Bool
+                ( ==$![(car xs) "" (rchan empty)]
+                | empty?e:Bool =
+                    if e then sumlen![(cdr xs) acc (rchan q)]
+                    else ( new n:^Int
+                           ( string.size![(car xs) (rchan n)]
+                           | n?k:Int =
+                               ( new acc1:^Int ( +![acc k (rchan acc1)] | acc1?z:Int = sumlen![(cdr xs) z (rchan q)] ) ) ) ) ) )
+          sumlen![ws 0 (rchan q)] ) ) )
+
+def mapStats [p:[Int String] q:/(List [String [Int Int Int Int]])] =
+  ( val s = (snd p)
+    new c:^Int new w:^Int new tc:^Int
+    ( string.size![s (rchan c)]
+    | wordCountLine![s (rchan w)]
+    | tokenCharsLine![s (rchan tc)]
+    | c?chars:Int = w?words:Int = tc?tchars:Int =
+        q!(cons ["stats" [chars words tchars 1]] nil) ) )
+
+def reduceStats [g:[String (List [Int Int Int Int])] q:/(List [String Float])] =
+  ( val vs = (snd g)
+    def fold [xs:(List [Int Int Int Int]) acc:[Int Int Int Int] q:/[Int Int Int Int]] =
+      if (null xs) then q!acc else
+        ( val [c w t l]  = (car xs)
+          val [C W T L]  = acc
+          new C1:^Int new W1:^Int new T1:^Int new L1:^Int
+          ( +![C c (rchan C1)]
+          | +![W w (rchan W1)]
+          | +![T t (rchan T1)]
+          | +![L l (rchan L1)]
+          | C1?Cc:Int = W1?Ww:Int = T1?Tt:Int = L1?Ll:Int =
+              fold![(cdr xs) [Cc Ww Tt Ll] (rchan q)] ) )
+    new totals:^[Int Int Int Int]
+    ( fold![vs [0 0 0 0] (rchan totals)]
+    | totals?[C W T L] =
+        ( new tF:^Float new wF:^Float new lF:^Float
+          ( float.fromInt![T (rchan tF)]
+          | float.fromInt![W (rchan wF)]
+          | float.fromInt![L (rchan lF)]
+          | tF?t:Float = wF?w:Float = lF?l:Float =
+              ( new cpw:^Float new wpl:^Float
+                ( float.div![t w (rchan cpw)]    
+                | float.div![w l (rchan wpl)]     
+                | cpw?f1:Float = wpl?f2:Float =
+                    ( new Cf:^Float new Wf:^Float
+                      ( float.fromInt![C (rchan Cf)]
+                      | float.fromInt![W (rchan Wf)]
+                      | Cf?cF:Float = Wf?wF2:Float =
+                          q!(cons ["Characters" cF]
+                           (cons ["Characters per Word" f1]
+                           (cons ["Words" wF2]
+                           (cons ["Words per Line" f2] nil)))) ) ) ) ) ) ) ) )
+
+def flatMapFromIS [#V xs:(List [Int String])
+                   f:/[[Int String] /(List [String V])]
+                   q:/(List [String V])] =
+  if (null xs) then
+    q!nil
+  else
+    ( new h:^(List [String V]) new t:^(List [String V]) new a:^(List [String V])
+      ( f![(car xs) (rchan h)]
+      | flatMapFromIS![#V (cdr xs) f (rchan t)]
+      | h?hs:(List [String V]) = t?ts:(List [String V]) =
+          appendPairsS![#V hs ts (rchan a)]
+      | a?res:(List [String V]) = q!res ) )
+
+def printLabelFloat [p:[String Float] q:/[]] =
+  ( val lab = (fst p)
+    val valf = (snd p)
+    new s:^String
+    ( float.toString![valf (rchan s)]
+    | s?txt:String = ( print!lab | print!" " | print!txt | print!"\n" | q![] ) ) )
+
+def printLabelFloatList [xs:(List [String Float]) q:/[]] =
+  if (null xs) then q![]
+  else ( new k:^[]
+         ( printLabelFloat![(car xs) (rchan k)]
+         | k?[] = printLabelFloatList![(cdr xs) (rchan q)] ) )
+
+new stats:^(List [String [Int Int Int Int]])
+new groupedS:^(List [String (List [Int Int Int Int])])
+new out2:^(List [String Float])
+run (
+  flatMapFromIS![#[Int Int Int Int] inputS mapStats (rchan stats)]
+  | stats?m:(List [String [Int Int Int Int]]) =
+      groupByKeyS![#[Int Int Int Int] m (rchan groupedS)] 
+  | groupedS?g:(List [String (List [Int Int Int Int])]) =
+      flatMapGroupsS![#[Int Int Int Int] #Float g reduceStats (rchan out2)]
+  | out2?final:(List [String Float]) =
+    ( print!"stats:\n"
+    | ( new done:^[]
+        ( printLabelFloatList![final (rchan done)]
+        | done?[] = print!"--end--\n" ) ) ) 
 )
+
