@@ -678,12 +678,34 @@ def msortInt [xs:(List Int) q:/(List Int)] =
             | msortInt![right (rchan sr)]
             | sl?l:(List Int) = sr?r:(List Int) = mergeInt![l r (rchan q)] ) ) ) )
 
+{- drop adjacent duplicates from a sorted (List Int) -}
+def dedupSortedInts [xs:(List Int) q:/(List Int)] =
+  if (null xs) then q!nil
+  else if (null (cdr xs)) then q!(cons (car xs) nil)
+  else
+    ( val x  = (car xs)
+      val ys = (cdr xs)
+      val y  = (car ys)
+      new eq:^Bool
+      ( ==![x y (rchan eq)]
+      | eq?same:Bool =
+          if same then
+            dedupSortedInts![ys q]                      {- skip duplicate -}
+          else
+            ( new rest:^(List Int)
+              ( dedupSortedInts![ys (rchan rest)]
+              | rest?rs:(List Int) = q!(cons x rs) ) ) ) )
+
+{- reducer now sorts, dedups, and wraps -}
 def reduceKeepLines [g:[String (List Int)] q:/(List [String (List Int)])] =
   ( val w  = (fst g)
     val vs = (snd g)
     new svs:^(List Int)
     ( msortInt![vs (rchan svs)]
-    | svs?sorted:(List Int) = q!(cons [w sorted] nil) ) )
+    | svs?sorted:(List Int) =
+        ( new uniq:^(List Int)
+          ( dedupSortedInts![sorted (rchan uniq)]
+          | uniq?u:(List Int) = q!(cons [w u] nil) ) ) ) )
 
 def printIntListInline [xs:(List Int) q:/[]] =
   if (null xs) then
@@ -696,30 +718,58 @@ def printIntListInline [xs:(List Int) q:/[]] =
           | printIntListInline![(cdr xs) (rchan q)] ) ) )
 
 def joinIntsWithSpaces [xs:(List Int) q:/String] =
-  if (null xs) then
-    q!""
-  else
-    ( new tail:^String
-      ( joinIntsWithSpaces![(cdr xs) (rchan tail)]
-      | tail?rest:String =
-          ( new here:^String
-            ( +$![(int.toString (car xs)) " " (rchan here)]
-            | here?h:String =
-                ( new out:^String
-                  ( +$![h rest (rchan out)]
-                  | out?z:String = q!z ) ) ) ) ) )
-
+  (def go [ys:(List Int) sep:String acc:String q:/String] =
+     if (null ys) then
+       q!acc
+     else
+       ( new t1:^String
+         ( +$![acc sep (rchan t1)]
+         | t1?a:String =
+             ( new h:^String
+               ( +$![a (int.toString (car ys)) (rchan h)]
+               | h?na:String = go![(cdr ys) " " na (rchan q)] ) ) ) )
+   go![xs "" "" (rchan q)] )
+                  
 def printGroupS [g:[String (List Int)] q:/[]] =
   ( new nums:^String
     ( joinIntsWithSpaces![(snd g) (rchan nums)]
     | nums?line:String =
         ( print!(fst g) | print!": " | print!line | print!"\n" | q![] ) ) )
 
+def printGroupSWithCount [g:[String (List Int)] q:/[]] =
+  ( val w  = (fst g)
+    val ls = (snd g)
+    new n:^Int new line:^String
+    ( length![#Int ls (rchan n)]
+    | joinIntsWithSpaces![ls (rchan line)]
+    | n?cnt:Int = line?txt:String =
+        ( print!w | print!" (" | printi!cnt | print!") : " | print!txt | print!"\n" | q![] ) ) )
+
+def printGroupSOneShot [g:[String (List Int)] q:/[]] =
+  ( val w  = (fst g)
+    val ls = (snd g)
+    new cnt:^Int new nums:^String
+    ( length![#Int ls (rchan cnt)]
+    | joinIntsWithSpaces![ls (rchan nums)]
+    | cnt?n:Int = nums?ns:String =
+        ( new s1:^String
+          ( +$![w " (" (rchan s1)]
+          | s1?a1:String =
+              ( new s2:^String
+                ( +$![a1 (int.toString n) (rchan s2)]
+                | s2?a2:String =
+                    ( new s3:^String
+                      ( +$![a2 ") : " (rchan s3)]
+                      | s3?a3:String =
+                          ( new line:^String
+                            ( +$![a3 ns (rchan line)]
+                            | line?L:String = ( print!L | print!"\n" | q![] ) ) ) ) ) ) ) ) ) ) )
+
 def printGroupsS [gs:(List [String (List Int)]) q:/[]] =
   if (null gs) then q![]
   else
     ( new k:^[]
-      ( printGroupS![(car gs) (rchan k)]
+      ( printGroupSOneShot![(car gs) (rchan k)]
       | k?[] = printGroupsS![(cdr gs) q] ) )
       
 def flatMapIS [xs:(List [Int String])
