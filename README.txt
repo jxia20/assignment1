@@ -113,11 +113,11 @@ reduceStats:
     Words per Line = words / lines
 
   Emit these as a list:
-       (cons > ["Characters" C]
-               ["Characters per Word" (T/W)]
-               ["Words" W]
-               ["Words per Line" (W/L)]
-        nil)
+    (cons > ["Characters"]
+            ["Characters per Word"]
+            ["Words"]
+            ["Words per Line"]
+    nil)
 
 printLabelFloatList prints the output as we expect
 
@@ -143,9 +143,9 @@ Limitations or Notable deviations:
 
 Outputs:
   Problem 1:
-  With needle = "is", on the provided Milton sonnet lines,
+  With needle = "is", on the Milton sonnet lines,
   the pipeline finds matches like "is", "his", "this", etc.,
-  sorts them by word length (shorter first), and prints line numbers.
+  sorts them by word length with shortest first, and prints line numbers.
 
   Problem 2:
   The stats pipeline reproduces the expected overall structure:
