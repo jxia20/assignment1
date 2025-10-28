@@ -871,9 +871,14 @@ def flatMapFromIS [#V xs:(List [Int String])
 def printLabelFloat [p:[String Float] q:/[]] =
   ( val lab = (fst p)
     val valf = (snd p)
-    new s:^String
+    new s:^String new line:^String
     ( float.toString![valf (rchan s)]
-    | s?txt:String = ( print!lab | print!" " | print!txt | print!"\n" | q![] ) ) )
+    | s?txt:String =
+        ( +$![lab ": " (rchan line)]
+        | line?a:String =
+            ( new out:^String
+              ( +$![a txt (rchan out)]
+              | out?o:String = ( print!o | print!"\n" | q![] ) ) ) ) ) )
 
 def printLabelFloatList [xs:(List [String Float]) q:/[]] =
   if (null xs) then q![]
@@ -881,7 +886,31 @@ def printLabelFloatList [xs:(List [String Float]) q:/[]] =
          ( printLabelFloat![(car xs) (rchan k)]
          | k?[] = printLabelFloatList![(cdr xs) (rchan q)] ) )
 
-new stats:^(List [String [Int Int Int Int]])
+new mapped:^(List [String Int])
+new sorted:^(List [String Int])
+new grouped:^(List [String (List Int)])
+new reduced:^(List [String (List Int)])
+
+run (
+  flatMapIS![inputS mapSearchBound (rchan mapped)]
+
+| mapped?m:(List [String Int]) =
+    msortPairsS![#Int m compareWordLen (rchan sorted)]
+
+| sorted?s:(List [String Int]) =
+    groupByKeyS![#Int s (rchan grouped)]
+
+| grouped?g:(List [String (List Int)]) =
+    flatMapGroupsS![#Int #(List Int) g reduceKeepLines (rchan reduced)]
+
+| reduced?out:(List [String (List Int)]) =
+    ( print!"matches:\n"
+    | ( new done:^[]
+      ( printGroupsS![out (rchan done)]
+      | done?[] = print!"--end--\n" ) ) )
+)
+
+{- new stats:^(List [String [Int Int Int Int]])
 new groupedS:^(List [String (List [Int Int Int Int])])
 new out2:^(List [String Float])
 run (
@@ -895,5 +924,5 @@ run (
     | ( new done:^[]
         ( printLabelFloatList![final (rchan done)]
         | done?[] = print!"--end--\n" ) ) ) 
-)
+) -}
 
