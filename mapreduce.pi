@@ -738,45 +738,52 @@ def printLabelFloatList [xs:(List [String Float]) q:/[]] =
   12) Main run: word search
 ============================-}
 
-{-
 new mapped:^(List [String Int])
 new sorted:^(List [String Int])
 new grouped:^(List [String (List Int)])
 new reduced:^(List [String (List Int)])
 
-run (
-  {- 1) map (tokenize & filter by needle) -}
-  flatMapIS![inputS mapSearchBound (rchan mapped)]
-
-| {- 2) sort by (word length then lex) -}
-  mapped?m:(List [String Int]) = msortPairsS![#Int m compareWordLen (rchan sorted)]
-
-| {- 3) group by word -}
-  sorted?s:(List [String Int]) = groupByKeyS![#Int s (rchan grouped)]
-
-| {- 4) reduce: sort line numbers per word -}
-  grouped?g:(List [String (List Int)]) = flatMapGroupsS![#Int #(List Int) g reduceKeepLines (rchan reduced)]
-
-| {- 5) print nicely -}
-  reduced?out:(List [String (List Int)]) =
-    ( print!"matches:\n"
-    | ( new done:^[]
-      ( printGroupsS![out (rchan done)]
-      | done?[] = print!"--end--\n" ) ) )
-)
-
-
 new stats:^(List [String [Int Int Int Int]])
 new groupedS:^(List [String (List [Int Int Int Int])])
 new out2:^(List [String Float])
+
 run (
-  flatMapFromIS![#[Int Int Int Int] inputS mapStats (rchan stats)]
-| stats?m:(List [String [Int Int Int Int]]) = groupByKeyS![#[Int Int Int Int] m (rchan groupedS)]
-| groupedS?g:(List [String (List [Int Int Int Int])]) =
-    flatMapGroupsS![#[Int Int Int Int] #Float g reduceStats (rchan out2)]
-| out2?final:(List [String Float]) =
-    ( print!"stats:\n"
-    | ( new done:^[]
-        ( printLabelFloatList![final (rchan done)]
-        | done?[] = print!"--end--\n" ) ) )
-) -}
+  {----- pipeline 1: matches -----}
+  (
+    {- 1) map (tokenize & filter by needle) -}
+    flatMapIS![inputS mapSearchBound (rchan mapped)]
+
+  | {- 2) sort by (word length then lex) -}
+    mapped?m:(List [String Int]) = msortPairsS![#Int m compareWordLen (rchan sorted)]
+
+  | {- 3) group by word -}
+    sorted?s:(List [String Int]) = groupByKeyS![#Int s (rchan grouped)]
+
+  | {- 4) reduce: sort line numbers per word -}
+    grouped?g:(List [String (List Int)]) =
+      flatMapGroupsS![#Int #(List Int) g reduceKeepLines (rchan reduced)]
+
+  | {- 5) print nicely -}
+    reduced?out:(List [String (List Int)]) =
+      ( print!"matches:\n"
+      | ( new done:^[]
+          ( printGroupsS![out (rchan done)]
+          | done?[] = print!"--end--\n" ) ) )
+  )
+
+| {----- pipeline 2: stats -----}
+  (
+    flatMapFromIS![#[Int Int Int Int] inputS mapStats (rchan stats)]
+  | stats?m:(List [String [Int Int Int Int]]) =
+      groupByKeyS![#[Int Int Int Int] m (rchan groupedS)]
+  | groupedS?g:(List [String (List [Int Int Int Int])]) =
+      flatMapGroupsS![#[Int Int Int Int] #Float g reduceStats (rchan out2)]
+  | out2?final:(List [String Float]) =
+      ( print!"stats:\n"
+      | ( new done:^[]
+          ( printLabelFloatList![final (rchan done)]
+          | done?[] = print!"--end--\n" ) ) )
+  )
+)
+
+
