@@ -1,3 +1,25 @@
+{-=========================================================
+  RPI CSCI MapReduce in Pict — Organized & Commented
+  ---------------------------------------------------
+  Sections:
+    0) Imports & Inputs
+    1) Core tiny helpers (Char/String/Int)
+    2) Generic List helpers (append/rev/length/map/flatMap)
+    3) Sorting by Int keys (merge sort & split)
+    4) Sorting by String keys (merge sort & split)
+    5) Pair helpers (Int-key and String-key)
+    6) Group-by (Int-key, String-key)
+    7) FlatMap over groups (Int-key, String-key)
+    8) MapReduce (Int-key, String-key)
+    9) Printing helpers (ints, pairs, grouped forms)
+   10) Word search pipeline (tokenize, lowercase, substring)
+   11) Stats pipeline (chars, words, etc.)
+   12) Main run
+=========================================================-}
+
+{-============================
+  0) Imports & Inputs
+============================-}
 import "Std/List"
 import "Std/String"
 import "Std/Int"
@@ -5,7 +27,8 @@ import "Std/Array"
 import "Std/Char"
 import "Std/Float"
 
-val needle = "is"
+val needle = "is"   {- search needle -}
+
 val inputS =
   (cons [1  "WHEN I consider how my light is spent"]
   (cons [2  "  E're half my days, in this dark world and wide,"]
@@ -22,17 +45,28 @@ val inputS =
   (cons [13 "  And post o're Land and Ocean without rest:"]
   (cons [14 "  They also serve who only stand and waite."]
         nil))))))))))))))
-        
+
+{-============================
+  1) Core tiny helpers
+============================-}
+
+{- Char -> String -}
+def charToString [c:Char q:/String] =
+  string.fromList![(cons c nil) (rchan q)]
+
+{- clamp negatives to 0 (for safe substring windows) -}
 def clampNonNeg [x:Int q:/Int] =
   ( new le0:^Bool
     ( <=![x 0 (rchan le0)]
     | le0?yes:Bool = if yes then q!0 else q!x ) )
 
+{- min of two ints via <= guard -}
 def min2 [a:Int b:Int q:/Int] =
   ( new le:^Bool
     ( <=![a b (rchan le)]
     | le?ok:Bool = if ok then q!a else q!b ) )
 
+{- safe substring: sub s start len, clamps out-of-range to "" -}
 def sub [s:String start:Int len:Int q:/String] =
   ( new L:^Int
     ( string.size![s (rchan L)]
@@ -42,126 +76,75 @@ def sub [s:String start:Int len:Int q:/String] =
           | clampNonNeg![len   (rchan l0)]
           | s0?st:Int = l0?ln:Int =
               ( new tooFar:^Bool
-                ( <=![n st (rchan tooFar)]           {- n <= st ? (start >= size) -}
+                ( <=![n st (rchan tooFar)]
                 | tooFar?out:Bool =
-                    if out then
-                      q!""                              {- past end ⇒ empty -}
-                    else
+                    if out then q!"" else
                       ( new maxLen:^Int
-                        ( -![n st (rchan maxLen)]       {- max allowed len = n - st -}
+                        ( -![n st (rchan maxLen)]
                         | maxLen?ml:Int =
                             ( new useLen:^Int
                               ( min2![ln ml (rchan useLen)]
                               | useLen?k:Int =
                                   string.sub![s st k (rchan q)] ) ) ) ) ) ) ) ) ) )
 
-def strlen [s:String q:/Int] =
-  string.size![s (rchan q)]
-  
-{- append helper function. combines two lists -}
+def strlen [s:String q:/Int] = string.size![s (rchan q)]
+
+{-============================
+  2) Generic List helpers
+============================-}
+
+{- append for any List X -}
 def append [#X xs:(List X) ys:(List X) q:/(List X)] =
-  if (null xs) then
-    q!ys
-  else
-    ( new k:^(List X)
-      ( append![#X (cdr xs) ys (rchan k)]
-      | k?zs:(List X) = q!(cons (car xs) zs) ))
+  if (null xs) then q!ys
+  else ( new k:^(List X)
+         ( append![#X (cdr xs) ys (rchan k)]
+         | k?zs:(List X) = q!(cons (car xs) zs) ))
 
-{- appendPairs: ∀T. append (List [Int T]) ++ (List [Int T]) -}
-def appendPairs [#T xs:(List [Int T]) ys:(List [Int T]) q:/(List [Int T])] =
-  if (null xs) then
-    q!ys
-  else
-    ( new k:^(List [Int T])
-      ( appendPairs![#T (cdr xs) ys (rchan k)]
-      | k?zs:(List [Int T]) = q!(cons (car xs) zs) ))
-
-{- printer list helper function. prints all values of a list of type integer -}
-def printList xs:(List Int) =
-  if (null xs) then
-    print!"\n"
-  else
-    ( printi!(car xs)
-    | print!" "
-    | printList!(cdr xs) )
-
-{- reverse list helper function. reverses a list -}
+{- reverse -}
 def revAcc [#X xs:(List X) acc:(List X) q:/(List X)] =
-  if (null xs) then
-    q!acc
-  else
-    revAcc![#X (cdr xs) (cons (car xs) acc) q]
+  if (null xs) then q!acc
+  else revAcc![#X (cdr xs) (cons (car xs) acc) q]
 
-{- reverse list helper -}
-def rev [#X xs:(List X) q:/(List X)] =
-  revAcc![#X xs nil q]
+def rev [#X xs:(List X) q:/(List X)] = revAcc![#X xs nil q]
 
+{- length -}
 def lengthAcc [#X xs:(List X) n:Int q:/Int] =
-  if (null xs) then
-    q!n
-  else
-    ( new sum:^Int
-      ( +![n 1 (rchan sum)]            
-      | sum?np1:Int = lengthAcc![#X (cdr xs) np1 q] ))
+  if (null xs) then q!n
+  else ( new sum:^Int
+         ( +![n 1 (rchan sum)]
+         | sum?np1:Int = lengthAcc![#X (cdr xs) np1 q] ))
 
-def length [#X xs:(List X) q:/Int] =
-  lengthAcc![#X xs 0 q]
+def length [#X xs:(List X) q:/Int] = lengthAcc![#X xs 0 q]
 
-{- mapList: apply f to each element of xs, collect results in order, send on q -}
+{- map and flatMap over lists -}
 def mapList [#A #B xs:(List A) f:/[A /B] q:/(List B)] =
-  if (null xs) then
-    q!nil
-  else
-    ( new b:^B            {- result of f (car xs) -}
-      new tl:^(List B)    {- mapped tail -}
-      ( f![(car xs) (rchan b)]
-      | b?y:B =
-          ( mapList![#A #B (cdr xs) f (rchan tl)]
-          | tl?ys:(List B) = q!(cons y ys) ) ) )
+  if (null xs) then q!nil
+  else ( new b:^B new tl:^(List B)
+         ( f![(car xs) (rchan b)]
+         | b?y:B =
+             ( mapList![#A #B (cdr xs) f (rchan tl)]
+             | tl?ys:(List B) = q!(cons y ys) ) ) )
 
-{- flatMap: ∀A,B. f : A -> (List B); concatenate f(x) over xs, send (List B) on q -}
 def flatMap [#A #B xs:(List A) f:/[A /(List B)] q:/(List B)] =
-  if (null xs) then
-    q!nil
-  else
-    ( new h:^(List B)      {- result of f (car xs) -}
-      new t:^(List B)      {- flatMap result of tail -}
-      new a:^(List B)      {- combined list -}
-      ( f![(car xs) (rchan h)]
-      | flatMap![#A #B (cdr xs) f (rchan t)]
-      | h?hs:(List B) = t?ts:(List B) =     {- receive both before appending -}
-          append![#B hs ts (rchan a)]
-      | a?res:(List B) = q!res ) )
-      
-{- flatMap over pairs: xs : (List [Int V]), f : [Int V] -> (List [Int V]) -}
-def flatMapPairs [#V xs:(List [Int V]) f:/[[Int V] /(List [Int V])] q:/(List [Int V])] =
-  if (null xs) then
-    q!nil
-  else
-    ( new h:^(List [Int V])
-      new t:^(List [Int V])
-      new a:^(List [Int V])
-      ( f![(car xs) (rchan h)]
-      | flatMapPairs![#V (cdr xs) f (rchan t)]
-      | h?hs:(List [Int V]) = t?ts:(List [Int V]) =
-          appendPairs![#V hs ts (rchan a)]
-      | a?res:(List [Int V]) = q!res ) )
+  if (null xs) then q!nil
+  else ( new h:^(List B) new t:^(List B) new a:^(List B)
+         ( f![(car xs) (rchan h)]
+         | flatMap![#A #B (cdr xs) f (rchan t)]
+         | h?hs:(List B) = t?ts:(List B) = append![#B hs ts (rchan a)]
+         | a?res:(List B) = q!res ) )
 
-{- flatMap over groups: xs : (List [Int (List V)]), f : [Int (List V)] -> (List [Int W]) -}
-def flatMapGroups [#V #W xs:(List [Int (List V)]) f:/[[Int (List V)] /(List [Int W])] q:/(List [Int W])] =
-  if (null xs) then
-    q!nil
-  else
-    ( new h:^(List [Int W])
-      new t:^(List [Int W])
-      new a:^(List [Int W])
-      ( f![(car xs) (rchan h)]
-      | flatMapGroups![#V #W (cdr xs) f (rchan t)]
-      | h?hs:(List [Int W]) = t?ts:(List [Int W]) =
-          appendPairs![#W hs ts (rchan a)]
-      | a?res:(List [Int W]) = q!res ) )
+{-============================
+  3) Sorting by Int keys
+============================-}
 
-{- mergePairs: merge two key-sorted lists of [Int V] using cmp, send result on q -}
+{- append for pairs [Int V] -}
+def appendPairs [#V xs:(List [Int V]) ys:(List [Int V]) q:/(List [Int V])] =
+  if (null xs) then q!ys
+  else ( new k:^(List [Int V])
+         ( appendPairs![#V (cdr xs) ys (rchan k)]
+         | k?zs:(List [Int V]) = q!(cons (car xs) zs) ))
+
+{- merge two sorted lists by Int key -}
 def mergePairs [#V xs:(List [Int V]) ys:(List [Int V]) cmp:/[Int Int /Bool] q:/(List [Int V])] =
   if (null xs) then q!ys
   else if (null ys) then q!xs
@@ -180,229 +163,47 @@ def mergePairs [#V xs:(List [Int V]) ys:(List [Int V]) cmp:/[Int Int /Bool] q:/(
               ( mergePairs![#V xs (cdr ys) cmp (rchan rest)]
               | rest?rs:(List [Int V]) = q!(cons [ky vy] rs) ) ) ) )
 
-{- tail helper: alternate elements into a and b, then send both -}
+{- split alternating into two lists -}
 def splitPairs_go [#V ys:(List [Int V]) a:(List [Int V]) b:(List [Int V]) q:/[(List [Int V]) (List [Int V])]] =
-  if (null ys) then
-    q![a b]
-  else if (null (cdr ys)) then
-    q![(cons (car ys) a) b]
-  else
-    splitPairs_go![#V (cdr (cdr ys)) (cons (car ys) a) (cons (car (cdr ys)) b) q]
+  if (null ys) then q![a b]
+  else if (null (cdr ys)) then q![(cons (car ys) a) b]
+  else splitPairs_go![#V (cdr (cdr ys)) (cons (car ys) a) (cons (car (cdr ys)) b) q]
 
-{- entry point -}
 def splitPairs [#V xs:(List [Int V]) q:/[(List [Int V]) (List [Int V])]] =
   splitPairs_go![#V xs nil nil q]
 
-def leStr [a:String b:String q:/Bool] =
-  <=$![a b (rchan q)]
-
+{- msort by Int key -}
 def msortPairs [#V xs:(List [Int V]) cmp:/[Int Int /Bool] q:/(List [Int V])] =
-  if (null xs) then
-    q!nil
-  else if (null (cdr xs)) then
-    q!xs
+  if (null xs) then q!nil
+  else if (null (cdr xs)) then q!xs
   else
     ( new halves:^[(List [Int V]) (List [Int V])]
       ( splitPairs![#V xs (rchan halves)]
       | halves?lr:[(List [Int V]) (List [Int V])] =
           ( val left  = (fst lr)
             val right = (snd lr)
-            new sl:^(List [Int V])
-            new sr:^(List [Int V])
-            new m:^(List [Int V])
+            new sl:^(List [Int V]) new sr:^(List [Int V]) new m:^(List [Int V])
             ( msortPairs![#V left  cmp (rchan sl)]
             | msortPairs![#V right cmp (rchan sr)]
             | sl?l:(List [Int V]) = sr?r:(List [Int V]) =
                 mergePairs![#V l r cmp (rchan m)]
             | m?res:(List [Int V]) = q!res ) ) ))
 
-{- print one tuple [Int Int] as (k:v) followed by a space -}
-def printPairKV p:[Int Int] =
-  ( val [k v] = p
-      ( printi!k |
-        ( print!":" | 
-          ( printi!v |
-            print!"" ) ) ) )
-  
-{- print a list of [Int Int] -}
-def printPairsKV xs:(List [Int Int]) =
-  if (null xs) then
-    print!"\n"
-  else
-    ( printPairKV!(car xs) 
-      | printPairsKV!(cdr xs) )
-    
-{- dup: make a 2-element list [x, x] -}
-def dup [x:Int q:/(List Int)] =
-  q!(cons x (cons x nil))
-  
-{- inc: x ↦ x + 1, returning via q -}
-def increment [x:Int q:/Int] =
-  ( new s:^Int
-    ( +![x 1 (rchan s)]
-    | s?r:Int = q!r ))
+{- basic int compares -}
+def increment [x:Int q:/Int] = ( new s:^Int ( +![x 1 (rchan s)] | s?r:Int = q!r ) )
+def compareInt [x:Int y:Int q:/Bool] = ( new b:^Bool ( <=![x y (rchan b)] | b?res = q!res ) )
+def eqInt [x:Int y:Int q:/Bool] = ( new b:^Bool ( ==![x y (rchan b)] | b?res = q!res ) )
 
-{- compareInt: send (x <= y) on q -}
-def compareInt [x:Int y:Int q:/Bool] =
-  ( new b:^Bool
-    ( <=![x y (rchan b)]
-    | b?res = q!res ) )
+{-============================
+  4) Sorting by String keys
+============================-}
 
-{- eqInt : send (x == y) on q -}
-def eqInt [x:Int y:Int q:/Bool] =
-  ( new b:^Bool
-    ( ==![x y (rchan b)]
-    | b?res = q!res ) )
-
-{- collectSameKey: given a sorted list ys of [Int V], collect a maximal run of 'key' into acc
-   and return the (values, rest) on TWO channels: qa for values (in reverse), qb for rest. -}
-def collectSameKey [#V ys:(List [Int V]) key:Int acc:(List V)
-                    qa:/(List V) qb:/(List [Int V])] =
-  if (null ys) then
-    ( qa!acc | qb!nil )
-  else
-    ( val p = (car ys)
-      val k = (fst p)
-      val v = (snd p)
-      new eq:^Bool
-      ( eqInt![key k (rchan eq)]
-      | eq?same:Bool =
-          if same then
-            collectSameKey![#V (cdr ys) key (cons v acc) qa qb]
-          else
-            ( qa!acc | qb!ys ) ) )
-
-{- groupByKey: input must be sorted by key; produce [k (List V in original order)] -}
-def groupByKey [#V xs:(List [Int V]) q:/(List [Int (List V)])] =
-  if (null xs) then
-    q!nil
-  else
-    ( val p0 = (car xs)
-      val k0 = (fst p0)
-      val v0 = (snd p0)
-
-      new vals:^(List V)            
-      new rest:^(List [Int V])      
-
-      ( collectSameKey![#V (cdr xs) k0 (cons v0 nil) (rchan vals) (rchan rest)]
-      | vals?revVals:(List V) =
-          ( new fwd:^(List V)
-            ( rev![#V revVals (rchan fwd)]
-            | fwd?vs:(List V) =
-                rest?rem:(List [Int V]) =
-                  ( new tail:^(List [Int (List V)])
-                    ( groupByKey![#V rem (rchan tail)]
-                    | tail?gs:(List [Int (List V)]) =
-                        q!(cons [k0 vs] gs) ) ) ) ) ) )
-
-{- print a grouped item [Int (List Int)] as k:[v1 v2 ...] -}
-def printGroup g:[Int (List Int)] =
-  ( val [k vs] = g
-    ( printi!k
-    | printList!vs
-    )
-  )
-
-def printGroups gs:(List [Int (List Int)]) =
-  if (null gs) then print!""
-  else ( printGroup!(car gs) | printGroups!(cdr gs) )
-
-{- printListSync: print a (List Int) then signal when done -}
-def printListSync [xs:(List Int) q:/[]] =
-  if (null xs) then
-    q![]
-  else
-    ( printi!(car xs)
-    | print!" "
-    | printListSync![(cdr xs) q] )
-
-{- printGroupSync: print one group k:[v1 v2 ...] + newline, then ack -}
-def printGroupSync [g:[Int (List Int)] q:/[]] =
-  ( val [k vs] = g
-    ( printi!k
-    | print!":" 
-    | ( new done:^[]
-        ( printListSync![vs (rchan done)]
-        | done?[] = ( print!"\n" | q![] ) ) ) ) )
-
-{- printGroupsSync: print groups sequentially by waiting for each ack -}
-def printGroupsSync [gs:(List [Int (List Int)]) q:/[]] =
-  if (null gs) then q![]
-  else
-    ( new k:^[]
-      ( printGroupSync![(car gs) (rchan k)]
-      | k?[] = printGroupsSync![(cdr gs) q] ) )
-
-{- mapReduce (Int keys):1) flatMap mapF over input2) sort by cmp3) group by key4) flatMap reduceF over groups-> send final (List [Int W]) on q-}
-def mapReduce [#V #W
-              mapF:/[[Int V] /(List [Int V])]
-              cmp:/[Int Int /Bool]
-              reduceF:/[[Int (List V)] /(List [Int W])]
-              input:(List [Int V]) q:/(List [Int W])] =
-  ( new mapped:^(List [Int V])
-    new sorted:^(List [Int V])
-    new grouped:^(List [Int (List V)])
-    new reduced:^(List [Int W])
-
-    {- 1) flatMap mapF over input -}
-    ( flatMapPairs![#V input mapF (rchan mapped)]
-
-    {- 2) sort by key -}
-    | mapped?m:(List [Int V]) =
-        msortPairs![#V m cmp (rchan sorted)]
-
-    {- 3) group -}
-    | sorted?s:(List [Int V]) =
-        groupByKey![#V s (rchan grouped)]
-
-    {- 4) flatMap reduceF over groups -}
-    | grouped?g:(List [Int (List V)]) =
-        flatMapGroups![#V #W g reduceF (rchan reduced)]
-
-    {- done -}
-    | reduced?out:(List [Int W]) = q!out ) )
-
-{- test map: duplicate each pair (k,v) -> [(k,v),(k,v)] -}
-def mapDup [p:[Int Int] q:/(List [Int Int])] =
-  ( val [k v] = p
-  q!(cons [k v] (cons [k v] nil)) )
-
-{- sum a list of Ints, sending the result on r -}
-def sumList [xs:(List Int) r:/Int] =
-  if (null xs) then
-    r!0
-  else
-    ( new t:^Int
-      ( sumList![(cdr xs) (rchan t)]
-      | t?s:Int = +![(car xs) s (rchan r)] ))
-
-{- reduceSum: sum values per key → single pair [k, sum] inside a 1-element list -}
-def reduceSum [g:[Int (List Int)] q:/(List [Int Int])] =
-  ( val [k vs] = g
-    new s:^Int
-    ( sumList![vs (rchan s)]
-    | s?total:Int = q!(cons [k total] nil) ))
-
-{- appendPairsS: ∀T. append two (List [String T]) -}
 def appendPairsS [#T xs:(List [String T]) ys:(List [String T]) q:/(List [String T])] =
   if (null xs) then q!ys
-  else
-    ( new k:^(List [String T])
-      ( appendPairsS![#T (cdr xs) ys (rchan k)]
-      | k?zs:(List [String T]) = q!(cons (car xs) zs) ))
+  else ( new k:^(List [String T])
+         ( appendPairsS![#T (cdr xs) ys (rchan k)]
+         | k?zs:(List [String T]) = q!(cons (car xs) zs) ))
 
-{- flatMapPairsS: xs : (List [String V]), f : [String V] -> (List [String V]) -}
-def flatMapPairsS [#V xs:(List [String V]) f:/[[String V] /(List [String V])] q:/(List [String V])] =
-  if (null xs) then q!nil
-  else
-    ( new h:^(List [String V]) new t:^(List [String V]) new a:^(List [String V])
-      ( f![(car xs) (rchan h)]
-      | flatMapPairsS![#V (cdr xs) f (rchan t)]
-      | h?hs:(List [String V]) = t?ts:(List [String V]) =
-          appendPairsS![#V hs ts (rchan a)]
-      | a?res:(List [String V]) = q!res ) )
-
-{- mergePairsS: merge two key-sorted lists of [String V] using cmp(String<=), send on q -}
 def mergePairsS [#V xs:(List [String V]) ys:(List [String V]) cmp:/[String String /Bool] q:/(List [String V])] =
   if (null xs) then q!ys
   else if (null ys) then q!xs
@@ -422,17 +223,14 @@ def mergePairsS [#V xs:(List [String V]) ys:(List [String V]) cmp:/[String Strin
               ( mergePairsS![#V xs (cdr ys) cmp (rchan rest)]
               | rest?rs:(List [String V]) = q!(cons [ky vy] rs) ) ) ) )
 
-{- splitPairsS: alternate elements into a and b, then send both in a tuple -}
 def splitPairsS_go [#V ys:(List [String V]) a:(List [String V]) b:(List [String V]) q:/[(List [String V]) (List [String V])]] =
   if (null ys) then q![a b]
   else if (null (cdr ys)) then q![(cons (car ys) a) b]
-  else
-    splitPairsS_go![#V (cdr (cdr ys)) (cons (car ys) a) (cons (car (cdr ys)) b) q]
+  else splitPairsS_go![#V (cdr (cdr ys)) (cons (car ys) a) (cons (car (cdr ys)) b) q]
 
 def splitPairsS [#V xs:(List [String V]) q:/[(List [String V]) (List [String V])]] =
   splitPairsS_go![#V xs nil nil q]
 
-{- msortPairsS: merge-sort by String key using cmp -}
 def msortPairsS [#V xs:(List [String V]) cmp:/[String String /Bool] q:/(List [String V])] =
   if (null xs) then q!nil
   else if (null (cdr xs)) then q!xs
@@ -449,12 +247,61 @@ def msortPairsS [#V xs:(List [String V]) cmp:/[String String /Bool] q:/(List [St
                 mergePairsS![#V l r cmp (rchan m)]
             | m?res:(List [String V]) = q!res ) ) ))
 
-def eqStr [x:String y:String q:/Bool] =
-  ( new b:^Bool
-    ( ==$![x y (rchan b)]
-    | b?res = q!res ) )
-        
-{- collectSameKeyS: like Int version, but for String keys (returns two channels) -}
+def leStr [a:String b:String q:/Bool] = <=$![a b (rchan q)]
+def eqStr [x:String y:String q:/Bool] = ( new b:^Bool ( ==$![x y (rchan b)] | b?res = q!res ) )
+
+{-============================
+  5) Pair helpers (Int-key & String-key)
+============================-}
+
+{- “dup” and tiny reducers -}
+def dup [x:Int q:/(List Int)] = q!(cons x (cons x nil))
+
+def sumList [xs:(List Int) r:/Int] =
+  if (null xs) then r!0
+  else ( new t:^Int
+         ( sumList![(cdr xs) (rchan t)]
+         | t?s:Int = +![(car xs) s (rchan r)] ))
+
+def reduceSum [g:[Int (List Int)] q:/(List [Int Int])] =
+  ( val [k vs] = g
+    new s:^Int
+    ( sumList![vs (rchan s)]
+    | s?total:Int = q!(cons [k total] nil) ))
+
+{-============================
+  6) Group-by (Int-key, String-key)
+============================-}
+
+{- collect run of same Int key (input is sorted) -}
+def collectSameKey [#V ys:(List [Int V]) key:Int acc:(List V) qa:/(List V) qb:/(List [Int V])] =
+  if (null ys) then ( qa!acc | qb!nil )
+  else
+    ( val p = (car ys)
+      val k = (fst p)
+      val v = (snd p)
+      new eq:^Bool
+      ( eqInt![key k (rchan eq)]
+      | eq?same:Bool =
+          if same then collectSameKey![#V (cdr ys) key (cons v acc) qa qb]
+          else ( qa!acc | qb!ys ) ) )
+
+def groupByKey [#V xs:(List [Int V]) q:/(List [Int (List V)])] =
+  if (null xs) then q!nil
+  else
+    ( val p0 = (car xs)  val k0 = (fst p0)  val v0 = (snd p0)
+      new vals:^(List V) new rest:^(List [Int V])
+      ( collectSameKey![#V (cdr xs) k0 (cons v0 nil) (rchan vals) (rchan rest)]
+      | vals?revVals:(List V) =
+          ( new fwd:^(List V)
+            ( rev![#V revVals (rchan fwd)]
+            | fwd?vs:(List V) =
+                rest?rem:(List [Int V]) =
+                  ( new tail:^(List [Int (List V)])
+                    ( groupByKey![#V rem (rchan tail)]
+                    | tail?gs:(List [Int (List V)]) = q!(cons [k0 vs] gs) ) ) ) ) ) )
+
+{- String version -}
 def collectSameKeyS [#V ys:(List [String V]) key:String acc:(List V) qa:/(List V) qb:/(List [String V])] =
   if (null ys) then ( qa!acc | qb!nil )
   else
@@ -462,10 +309,8 @@ def collectSameKeyS [#V ys:(List [String V]) key:String acc:(List V) qa:/(List V
       new eq:^Bool
       ( eqStr![key k (rchan eq)]
       | eq?same:Bool =
-          if same then
-            collectSameKeyS![#V (cdr ys) key (cons v acc) qa qb]
-          else
-            ( qa!acc | qb!ys ) ) )
+          if same then collectSameKeyS![#V (cdr ys) key (cons v acc) qa qb]
+          else ( qa!acc | qb!ys ) ) )
 
 def groupByKeyS [#V xs:(List [String V]) q:/(List [String (List V)])] =
   if (null xs) then q!nil
@@ -478,22 +323,109 @@ def groupByKeyS [#V xs:(List [String V]) q:/(List [String (List V)])] =
             ( rev![#V revVals (rchan fwd)]
             | fwd?vs:(List V) =
                 rest?rem:(List [String V]) =
-                  ( new tail:^(List [String (List V)])
+                  ( new tail:^(List [String (List V)] )
                     ( groupByKeyS![#V rem (rchan tail)]
                     | tail?gs:(List [String (List V)]) = q!(cons [k0 vs] gs) ) ) ) ) ) )
 
-{- flatMapGroupsS: groups [String (List V)] via f : … -> (List [String W]) -}
+{-============================
+  7) FlatMap over groups (Int-key, String-key)
+============================-}
+
+def flatMapPairs [#V xs:(List [Int V]) f:/[[Int V] /(List [Int V])] q:/(List [Int V])] =
+  if (null xs) then q!nil
+  else ( new h:^(List [Int V]) new t:^(List [Int V]) new a:^(List [Int V])
+         ( f![(car xs) (rchan h)]
+         | flatMapPairs![#V (cdr xs) f (rchan t)]
+         | h?hs:(List [Int V]) = t?ts:(List [Int V]) =
+             appendPairs![#V hs ts (rchan a)]
+         | a?res:(List [Int V]) = q!res ) )
+
+def flatMapGroups [#V #W xs:(List [Int (List V)]) f:/[[Int (List V)] /(List [Int W])] q:/(List [Int W])] =
+  if (null xs) then q!nil
+  else ( new h:^(List [Int W]) new t:^(List [Int W]) new a:^(List [Int W])
+         ( f![(car xs) (rchan h)]
+         | flatMapGroups![#V #W (cdr xs) f (rchan t)]
+         | h?hs:(List [Int W]) = t?ts:(List [Int W]) =
+             appendPairs![#W hs ts (rchan a)]
+         | a?res:(List [Int W]) = q!res ) )
+
+def flatMapPairsS [#V xs:(List [String V]) f:/[[String V] /(List [String V])] q:/(List [String V])] =
+  if (null xs) then q!nil
+  else ( new h:^(List [String V]) new t:^(List [String V]) new a:^(List [String V])
+         ( f![(car xs) (rchan h)]
+         | flatMapPairsS![#V (cdr xs) f (rchan t)]
+         | h?hs:(List [String V]) = t?ts:(List [String V]) =
+             appendPairsS![#V hs ts (rchan a)]
+         | a?res:(List [String V]) = q!res ) )
+
 def flatMapGroupsS [#V #W xs:(List [String (List V)]) f:/[[String (List V)] /(List [String W])] q:/(List [String W])] =
   if (null xs) then q!nil
-  else
-    ( new h:^(List [String W]) new t:^(List [String W]) new a:^(List [String W])
-      ( f![(car xs) (rchan h)]
-      | flatMapGroupsS![#V #W (cdr xs) f (rchan t)]
-      | h?hs:(List [String W]) = t?ts:(List [String W]) =
-          appendPairsS![#W hs ts (rchan a)]
-      | a?res:(List [String W]) = q!res ) )
+  else ( new h:^(List [String W]) new t:^(List [String W]) new a:^(List [String W])
+         ( f![(car xs) (rchan h)]
+         | flatMapGroupsS![#V #W (cdr xs) f (rchan t)]
+         | h?hs:(List [String W]) = t?ts:(List [String W]) =
+             appendPairsS![#W hs ts (rchan a)]
+         | a?res:(List [String W]) = q!res ) )
 
-{- mapReduceS for String keys: map -> sort -> group -> reduce -}
+def flatMapIS [xs:(List [Int String])
+               f:/[[Int String] /(List [String Int])]
+               q:/(List [String Int])] =
+  if (null xs) then
+    q!nil
+  else
+    ( new h:^(List [String Int]) new t:^(List [String Int]) new a:^(List [String Int])
+      ( f![(car xs) (rchan h)]
+      | flatMapIS![(cdr xs) f (rchan t)]
+      | h?hs:(List [String Int]) = t?ts:(List [String Int]) =
+          appendPairsS![#Int hs ts (rchan a)]
+      | a?res:(List [String Int]) = q!res ) )
+
+def flatMapFromIS [#V xs:(List [Int String])
+                   f:/[[Int String] /(List [String V])]
+                   q:/(List [String V])] =
+  if (null xs) then
+    q!nil
+  else
+    ( new h:^(List [String V]) new t:^(List [String V]) new a:^(List [String V])
+      ( f![(car xs) (rchan h)]
+      | flatMapFromIS![#V (cdr xs) f (rchan t)]
+      | h?hs:(List [String V]) = t?ts:(List [String V]) =
+          appendPairsS![#V hs ts (rchan a)]
+      | a?res:(List [String V]) = q!res ) )
+      
+{-============================
+  8) MapReduce (Int-key, String-key)
+============================-}
+
+{- comparator wrappers -}
+def compareWordLen [a:String b:String q:/Bool] =
+  ( new la:^Int new lb:^Int
+    ( strlen![a (rchan la)]
+    | strlen![b (rchan lb)]
+    | la?na:Int = lb?nb:Int =
+        ( new sameLen:^Bool
+          ( eqInt![na nb (rchan sameLen)]
+          | sameLen?eqL:Bool =
+              if eqL then ( new lex:^Bool ( <=$![a b (rchan lex)] | lex?ok:Bool = q!ok ) )
+              else ( new le:^Bool ( compareInt![na nb (rchan le)] | le?ok2:Bool = q!ok2 ) ) ) ) ) )
+
+{- Int-key generic -}
+def mapReduce [#V #W
+              mapF:/[[Int V] /(List [Int V])]
+              cmp:/[Int Int /Bool]
+              reduceF:/[[Int (List V)] /(List [Int W])]
+              input:(List [Int V]) q:/(List [Int W])] =
+  ( new mapped:^(List [Int V])
+    new sorted:^(List [Int V])
+    new grouped:^(List [Int (List V)])
+    new reduced:^(List [Int W])
+    ( flatMapPairs![#V input mapF (rchan mapped)]
+    | mapped?m:(List [Int V]) = msortPairs![#V m cmp (rchan sorted)]
+    | sorted?s:(List [Int V]) = groupByKey![#V s (rchan grouped)]
+    | grouped?g:(List [Int (List V)]) = flatMapGroups![#V #W g reduceF (rchan reduced)]
+    | reduced?out:(List [Int W]) = q!out ) )
+
+{- String-key generic -}
 def mapReduceS [#V #W
                mapF:/[[String V] /(List [String V])]
                cmp:/[String String /Bool]
@@ -509,88 +441,109 @@ def mapReduceS [#V #W
     | grouped?g:(List [String (List V)]) = flatMapGroupsS![#V #W g reduceF (rchan reduced)]
     | reduced?out:(List [String W]) = q!out ) )
 
-{- concat a (List String) with no separator -}
-def concatStrings [xs:(List String) q:/String] =
-  if (null xs) then
-    q!""
-  else
-    ( new rest:^String
-      ( concatStrings![(cdr xs) (rchan rest)]
-      | rest?rs:String =
-          ( new c:^String
-            ( +$![(car xs) rs (rchan c)]
-            | c?z:String = q!z ) ) ) )
+{-============================
+  9) Printing helpers
+============================-}
 
-def compareWordLen [a:String b:String q:/Bool] =
-  ( new la:^Int
-    new lb:^Int
-    ( strlen![a (rchan la)]
-    | strlen![b (rchan lb)]
-    | la?na:Int = lb?nb:Int =
-        ( new sameLen:^Bool
-          ( eqInt![na nb (rchan sameLen)]
-          | sameLen?eqL:Bool =
-              if eqL then
-                {- same length: fall back to lexicographic a <= b -}
-                ( new lex:^Bool
-                  ( <=$![a b (rchan lex)]
-                  | lex?ok:Bool = q!ok ) )
-              else
-                {- different lengths: just compare lengths na <= nb -}
-                ( new le:^Bool
-                  ( compareInt![na nb (rchan le)]
-                  | le?ok2:Bool = q!ok2 ) ) ) ) ) )
+{- pairs k:v -}
+def printPairKV p:[Int Int] =
+  ( val [k v] = p
+    ( printi!k | ( print!":" | ( printi!v | print!"" ) ) ) )
 
-def isPunctChar [c:String q:/Bool] =
-  ( new b1:^Bool
-    ( ==$![c "," (rchan b1)]
-    | b1?comma:Bool =
-        if comma then
-          q!true
-        else
-          ( new b2:^Bool
-            ( ==$![c ";" (rchan b2)]
-            | b2?semi:Bool =
-                if semi then
-                  q!true
-                else
-                  ( new b3:^Bool
-                    ( ==$![c "." (rchan b3)]
-                    | b3?dot:Bool =
-                        if dot then
-                          q!true
-                        else
-                          ( new b4:^Bool
-                            ( ==$![c ":" (rchan b4)]
-                            | b4?colon:Bool =
-                                if colon then q!true else q!false ) ) ) ) ) ) ) )
+def printPairsKV xs:(List [Int Int]) =
+  if (null xs) then print!"\n"
+  else ( printPairKV!(car xs) | printPairsKV!(cdr xs) )
 
-def containsFromOffset [needle:String hay:String mlen:Int i:Int limit:Int q:/Bool] =
-  ( new within:^Bool
-    ( compareInt![i limit (rchan within)]   {- i <= limit ? -}
-    | within?okWithin:Bool =
-        if okWithin then
-          ( new seg:^String
-            ( sub![hay i mlen (rchan seg)]
-            | seg?chunk:String =
-                ( new eq:^Bool
-                  ( ==$![chunk needle (rchan eq)]
-                  | eq?match:Bool =
-                      if match then
-                        q!true
-                      else
-                        ( new ip1:^Int
-                          ( +![i 1 (rchan ip1)]
-                          | ip1?nextI:Int =
-                              containsFromOffset![needle hay mlen nextI limit (rchan q)] ) ) ) ) ) )
-        else
-          q!false ) )
-          
+{- simple list -}
+def printList xs:(List Int) =
+  if (null xs) then print!"\n"
+  else ( printi!(car xs) | print!" " | printList!(cdr xs) )
+
+{- sync printing to avoid interleaving -}
+def printListSync [xs:(List Int) q:/[]] =
+  if (null xs) then q![]
+  else ( printi!(car xs) | print!" " | printListSync![(cdr xs) q] )
+
+def printGroup g:[Int (List Int)] =
+  ( val [k vs] = g
+    ( printi!k | printList!vs ) )
+
+def printGroupSync [g:[Int (List Int)] q:/[]] =
+  ( val [k vs] = g
+    ( printi!k | print!":" |
+      ( new done:^[]
+        ( printListSync![vs (rchan done)]
+        | done?[] = ( print!"\n" | q![] ) ) ) ) )
+
+def printGroupsSync [gs:(List [Int (List Int)]) q:/[]] =
+  if (null gs) then q![]
+  else ( new k:^[] ( printGroupSync![(car gs) (rchan k)]
+       | k?[] = printGroupsSync![(cdr gs) q] ) )
+
+{- join ints with spaces into String -}
+def joinIntsWithSpaces [xs:(List Int) q:/String] =
+  (def go [ys:(List Int) sep:String acc:String q:/String] =
+     if (null ys) then q!acc
+     else
+       ( new t1:^String
+         ( +$![acc sep (rchan t1)]
+         | t1?a:String =
+             ( new h:^String
+               ( +$![a (int.toString (car ys)) (rchan h)]
+               | h?na:String = go![(cdr ys) " " na (rchan q)] ) ) ) )
+   go![xs "" "" (rchan q)] )
+
+def printGroupS [g:[String (List Int)] q:/[]] =
+  ( new nums:^String
+    ( joinIntsWithSpaces![(snd g) (rchan nums)]
+    | nums?line:String =
+        ( print!(fst g) | print!": " | print!line | print!"\n" | q![] ) ) )
+
+def printGroupSWithCount [g:[String (List Int)] q:/[]] =
+  ( val w  = (fst g)
+    val ls = (snd g)
+    new n:^Int new line:^String
+    ( length![#Int ls (rchan n)]
+    | joinIntsWithSpaces![ls (rchan line)]
+    | n?cnt:Int = line?txt:String =
+        ( print!w | print!" (" | printi!cnt | print!") : " | print!txt | print!"\n" | q![] ) ) )
+
+def printGroupSOneShot [g:[String (List Int)] q:/[]] =
+  ( val w  = (fst g)
+    val ls = (snd g)
+    new cnt:^Int new nums:^String
+    ( length![#Int ls (rchan cnt)]
+    | joinIntsWithSpaces![ls (rchan nums)]
+    | cnt?n:Int = nums?ns:String =
+        ( new s1:^String
+          ( +$![w " (" (rchan s1)]
+          | s1?a1:String =
+              ( new s2:^String
+                ( +$![a1 (int.toString n) (rchan s2)]
+                | s2?a2:String =
+                    ( new s3:^String
+                      ( +$![a2 ") : " (rchan s3)]
+                      | s3?a3:String =
+                          ( new line:^String
+                            ( +$![a3 ns (rchan line)]
+                            | line?L:String = ( print!L | print!"\n" | q![] ) ) ) ) ) ) ) ) ) ) )
+
+def printGroupsS [gs:(List [String (List Int)]) q:/[]] =
+  if (null gs) then q![]
+  else ( new k:^[] ( printGroupSOneShot![(car gs) (rchan k)]
+       | k?[] = printGroupsS![(cdr gs) q] ) )
+
+{-============================
+  10) Word search pipeline
+============================-}
+
+{- lowercase a char at i -}
 def lowerAt [s:String i:Int q:/Char] =
   ( new ch:^Char
     ( string.nth![s i (rchan ch)]
     | ch?c:Char = char.toLower![c (rchan q)] ) )
 
+{- lowercase whole string -}
 def toLowerStr [s:String q:/String] =
   ( new n:^Int
     ( string.size![s (rchan n)]
@@ -598,6 +551,7 @@ def toLowerStr [s:String q:/String] =
         ( def f [i:Int q:/Char] = lowerAt![s i (rchan q)]
           string.tabulate![L f (rchan q)] ) ) )
 
+{- case-insensitive contains via string.in after lowercasing -}
 def containsSubstr [needle:String hay:String q:/Bool] =
   ( new nlow:^String new hlow:^String
     ( toLowerStr![needle (rchan nlow)]
@@ -605,6 +559,7 @@ def containsSubstr [needle:String hay:String q:/Bool] =
     | nlow?n1:String = hlow?h1:String =
         string.in![n1 h1 (rchan q)] ) )
 
+{- map: emit (wordLower, lineNo) for each token containing needle (case-insensitive) -}
 def mapSearch [needle:String p:[Int String] q:/(List [String Int])] =
   ( val ln   = (fst p)
     val line = (snd p)
@@ -617,8 +572,7 @@ def mapSearch [needle:String p:[Int String] q:/(List [String Int])] =
               new isEmpty:^Bool
               ( ==$![w "" (rchan isEmpty)]
               | isEmpty?e:Bool =
-                  if e then
-                    go![(cdr xs) acc (rchan q)]
+                  if e then go![(cdr xs) acc (rchan q)]
                   else
                     ( new wlow:^String
                       ( toLowerStr![w (rchan wlow)]
@@ -640,6 +594,7 @@ def mapSearch [needle:String p:[Int String] q:/(List [String Int])] =
 def mapSearchBound [p:[Int String] q:/(List [String Int])] =
   mapSearch![needle p (rchan q)]
 
+{- reduce: keep sorted list of line numbers (dedup optional; we keep all) -}
 def mergeInt [xs:(List Int) ys:(List Int) q:/(List Int)] =
   if (null xs) then q!ys
   else if (null ys) then q!xs
@@ -678,110 +633,16 @@ def msortInt [xs:(List Int) q:/(List Int)] =
             | msortInt![right (rchan sr)]
             | sl?l:(List Int) = sr?r:(List Int) = mergeInt![l r (rchan q)] ) ) ) )
 
-{- drop adjacent duplicates from a sorted (List Int) -}
-def dedupSortedInts [xs:(List Int) q:/(List Int)] =
-  if (null xs) then q!nil
-  else if (null (cdr xs)) then q!(cons (car xs) nil)
-  else
-    ( val x  = (car xs)
-      val ys = (cdr xs)
-      val y  = (car ys)
-      new eq:^Bool
-      ( ==![x y (rchan eq)]
-      | eq?same:Bool =
-          if same then
-            dedupSortedInts![ys q]                      {- skip duplicate -}
-          else
-            ( new rest:^(List Int)
-              ( dedupSortedInts![ys (rchan rest)]
-              | rest?rs:(List Int) = q!(cons x rs) ) ) ) )
-
-{- reducer now sorts, dedups, and wraps -}
 def reduceKeepLines [g:[String (List Int)] q:/(List [String (List Int)])] =
   ( val w  = (fst g)
     val vs = (snd g)
     new svs:^(List Int)
     ( msortInt![vs (rchan svs)]
-    | svs?sorted:(List Int) =
-        q!(cons [w sorted] nil) ) ) 
+    | svs?sorted:(List Int) = q!(cons [w sorted] nil) ) )
 
-def printIntListInline [xs:(List Int) q:/[]] =
-  if (null xs) then
-    q![]
-  else
-    ( new s:^String
-      ( +$![(int.toString (car xs)) " " (rchan s)]
-      | s?t:String =
-          ( print!t
-          | printIntListInline![(cdr xs) (rchan q)] ) ) )
-
-def joinIntsWithSpaces [xs:(List Int) q:/String] =
-  (def go [ys:(List Int) sep:String acc:String q:/String] =
-     if (null ys) then
-       q!acc
-     else
-       ( new t1:^String
-         ( +$![acc sep (rchan t1)]
-         | t1?a:String =
-             ( new h:^String
-               ( +$![a (int.toString (car ys)) (rchan h)]
-               | h?na:String = go![(cdr ys) " " na (rchan q)] ) ) ) )
-   go![xs "" "" (rchan q)] )
-                  
-def printGroupS [g:[String (List Int)] q:/[]] =
-  ( new nums:^String
-    ( joinIntsWithSpaces![(snd g) (rchan nums)]
-    | nums?line:String =
-        ( print!(fst g) | print!": " | print!line | print!"\n" | q![] ) ) )
-
-def printGroupSWithCount [g:[String (List Int)] q:/[]] =
-  ( val w  = (fst g)
-    val ls = (snd g)
-    new n:^Int new line:^String
-    ( length![#Int ls (rchan n)]
-    | joinIntsWithSpaces![ls (rchan line)]
-    | n?cnt:Int = line?txt:String =
-        ( print!w | print!" (" | printi!cnt | print!") : " | print!txt | print!"\n" | q![] ) ) )
-
-def printGroupSOneShot [g:[String (List Int)] q:/[]] =
-  ( val w  = (fst g)
-    val ls = (snd g)
-    new cnt:^Int new nums:^String
-    ( length![#Int ls (rchan cnt)]
-    | joinIntsWithSpaces![ls (rchan nums)]
-    | cnt?n:Int = nums?ns:String =
-        ( new s1:^String
-          ( +$![w " (" (rchan s1)]
-          | s1?a1:String =
-              ( new s2:^String
-                ( +$![a1 (int.toString n) (rchan s2)]
-                | s2?a2:String =
-                    ( new s3:^String
-                      ( +$![a2 ") : " (rchan s3)]
-                      | s3?a3:String =
-                          ( new line:^String
-                            ( +$![a3 ns (rchan line)]
-                            | line?L:String = ( print!L | print!"\n" | q![] ) ) ) ) ) ) ) ) ) ) )
-
-def printGroupsS [gs:(List [String (List Int)]) q:/[]] =
-  if (null gs) then q![]
-  else
-    ( new k:^[]
-      ( printGroupSOneShot![(car gs) (rchan k)]
-      | k?[] = printGroupsS![(cdr gs) q] ) )
-      
-def flatMapIS [xs:(List [Int String])
-               f:/[[Int String] /(List [String Int])]
-               q:/(List [String Int])] =
-  if (null xs) then
-    q!nil
-  else
-    ( new h:^(List [String Int]) new t:^(List [String Int]) new a:^(List [String Int])
-      ( f![(car xs) (rchan h)]
-      | flatMapIS![(cdr xs) f (rchan t)]
-      | h?hs:(List [String Int]) = t?ts:(List [String Int]) =
-          appendPairsS![#Int hs ts (rchan a)]
-      | a?res:(List [String Int]) = q!res ) )
+{-============================
+  11) Stats pipeline (optional)
+============================-}
 
 def wordCountLine [s:String q:/Int] =
   ( new toks:^(List String)
@@ -843,8 +704,8 @@ def reduceStats [g:[String (List [Int Int Int Int])] q:/(List [String Float])] =
           | float.fromInt![L (rchan lF)]
           | tF?t:Float = wF?w:Float = lF?l:Float =
               ( new cpw:^Float new wpl:^Float
-                ( float.div![t w (rchan cpw)]    
-                | float.div![w l (rchan wpl)]     
+                ( float.div![t w (rchan cpw)]
+                | float.div![w l (rchan wpl)]
                 | cpw?f1:Float = wpl?f2:Float =
                     ( new Cf:^Float new Wf:^Float
                       ( float.fromInt![C (rchan Cf)]
@@ -855,19 +716,7 @@ def reduceStats [g:[String (List [Int Int Int Int])] q:/(List [String Float])] =
                            (cons ["Words" wF2]
                            (cons ["Words per Line" f2] nil)))) ) ) ) ) ) ) ) )
 
-def flatMapFromIS [#V xs:(List [Int String])
-                   f:/[[Int String] /(List [String V])]
-                   q:/(List [String V])] =
-  if (null xs) then
-    q!nil
-  else
-    ( new h:^(List [String V]) new t:^(List [String V]) new a:^(List [String V])
-      ( f![(car xs) (rchan h)]
-      | flatMapFromIS![#V (cdr xs) f (rchan t)]
-      | h?hs:(List [String V]) = t?ts:(List [String V]) =
-          appendPairsS![#V hs ts (rchan a)]
-      | a?res:(List [String V]) = q!res ) )
-
+{- label/float printing (for stats) -}
 def printLabelFloat [p:[String Float] q:/[]] =
   ( val lab = (fst p)
     val valf = (snd p)
@@ -882,47 +731,52 @@ def printLabelFloat [p:[String Float] q:/[]] =
 
 def printLabelFloatList [xs:(List [String Float]) q:/[]] =
   if (null xs) then q![]
-  else ( new k:^[]
-         ( printLabelFloat![(car xs) (rchan k)]
-         | k?[] = printLabelFloatList![(cdr xs) (rchan q)] ) )
+  else ( new k:^[] ( printLabelFloat![(car xs) (rchan k)]
+       | k?[] = printLabelFloatList![(cdr xs) (rchan q)] ) )
 
+{-============================
+  12) Main run: word search
+============================-}
+
+{-
 new mapped:^(List [String Int])
 new sorted:^(List [String Int])
 new grouped:^(List [String (List Int)])
 new reduced:^(List [String (List Int)])
 
 run (
+  {- 1) map (tokenize & filter by needle) -}
   flatMapIS![inputS mapSearchBound (rchan mapped)]
 
-| mapped?m:(List [String Int]) =
-    msortPairsS![#Int m compareWordLen (rchan sorted)]
+| {- 2) sort by (word length then lex) -}
+  mapped?m:(List [String Int]) = msortPairsS![#Int m compareWordLen (rchan sorted)]
 
-| sorted?s:(List [String Int]) =
-    groupByKeyS![#Int s (rchan grouped)]
+| {- 3) group by word -}
+  sorted?s:(List [String Int]) = groupByKeyS![#Int s (rchan grouped)]
 
-| grouped?g:(List [String (List Int)]) =
-    flatMapGroupsS![#Int #(List Int) g reduceKeepLines (rchan reduced)]
+| {- 4) reduce: sort line numbers per word -}
+  grouped?g:(List [String (List Int)]) = flatMapGroupsS![#Int #(List Int) g reduceKeepLines (rchan reduced)]
 
-| reduced?out:(List [String (List Int)]) =
+| {- 5) print nicely -}
+  reduced?out:(List [String (List Int)]) =
     ( print!"matches:\n"
     | ( new done:^[]
       ( printGroupsS![out (rchan done)]
       | done?[] = print!"--end--\n" ) ) )
 )
 
-{- new stats:^(List [String [Int Int Int Int]])
+
+new stats:^(List [String [Int Int Int Int]])
 new groupedS:^(List [String (List [Int Int Int Int])])
 new out2:^(List [String Float])
 run (
   flatMapFromIS![#[Int Int Int Int] inputS mapStats (rchan stats)]
-  | stats?m:(List [String [Int Int Int Int]]) =
-      groupByKeyS![#[Int Int Int Int] m (rchan groupedS)] 
-  | groupedS?g:(List [String (List [Int Int Int Int])]) =
-      flatMapGroupsS![#[Int Int Int Int] #Float g reduceStats (rchan out2)]
-  | out2?final:(List [String Float]) =
+| stats?m:(List [String [Int Int Int Int]]) = groupByKeyS![#[Int Int Int Int] m (rchan groupedS)]
+| groupedS?g:(List [String (List [Int Int Int Int])]) =
+    flatMapGroupsS![#[Int Int Int Int] #Float g reduceStats (rchan out2)]
+| out2?final:(List [String Float]) =
     ( print!"stats:\n"
     | ( new done:^[]
         ( printLabelFloatList![final (rchan done)]
-        | done?[] = print!"--end--\n" ) ) ) 
+        | done?[] = print!"--end--\n" ) ) )
 ) -}
-
