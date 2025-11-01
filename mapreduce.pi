@@ -738,7 +738,8 @@ def printLabelFloatList [xs:(List [String Float]) q:/[]] =
   12) Main run: word search
 ============================-}
 
-new mapped:^(List [String Int])
+new mapped:^(List [String Int]):&
+
 new sorted:^(List [String Int])
 new grouped:^(List [String (List Int)])
 new reduced:^(List [String (List Int)])
